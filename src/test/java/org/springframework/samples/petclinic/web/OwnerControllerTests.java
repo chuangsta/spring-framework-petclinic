@@ -3,6 +3,7 @@ package org.springframework.samples.petclinic.web;
 import org.assertj.core.util.Lists;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.service.ClinicService;
@@ -10,9 +11,15 @@ import org.springframework.test.context.junit.jupiter.web.SpringJUnitWebConfig;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.hasProperty;
 import static org.hamcrest.Matchers.is;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -40,6 +47,7 @@ class OwnerControllerTests {
 
     @BeforeEach
     void setup() {
+        reset(this.clinicService);
         this.mockMvc = MockMvcBuilders.standaloneSetup(ownerController).build();
 
         george = new Owner();
@@ -63,6 +71,11 @@ class OwnerControllerTests {
 
     @Test
     void testProcessCreationFormSuccess() throws Exception {
+        doAnswer(invocation -> {
+            ((Owner) invocation.getArgument(0)).setId(TEST_OWNER_ID);
+            return null;
+        }).when(this.clinicService).saveOwner(any(Owner.class));
+
         mockMvc.perform(post("/owners/new")
             .param("firstName", "Joe")
             .param("lastName", "Bloggs")
@@ -70,7 +83,17 @@ class OwnerControllerTests {
             .param("city", "London")
             .param("telephone", "01316761638")
         )
-            .andExpect(status().is3xxRedirection());
+            .andExpect(status().is3xxRedirection())
+            .andExpect(redirectedUrl("/owners/" + TEST_OWNER_ID));
+
+        ArgumentCaptor<Owner> ownerCaptor = ArgumentCaptor.forClass(Owner.class);
+        verify(this.clinicService).saveOwner(ownerCaptor.capture());
+        Owner savedOwner = ownerCaptor.getValue();
+        assertThat(savedOwner.getFirstName(), is("Joe"));
+        assertThat(savedOwner.getLastName(), is("Bloggs"));
+        assertThat(savedOwner.getAddress(), is("123 Caramel Street"));
+        assertThat(savedOwner.getCity(), is("London"));
+        assertThat(savedOwner.getTelephone(), is("01316761638"));
     }
 
     @Test
@@ -85,6 +108,8 @@ class OwnerControllerTests {
             .andExpect(model().attributeHasFieldErrors("owner", "address"))
             .andExpect(model().attributeHasFieldErrors("owner", "telephone"))
             .andExpect(view().name("owners/createOrUpdateOwnerForm"));
+
+        verify(this.clinicService, never()).saveOwner(any(Owner.class));
     }
 
     @Test
@@ -97,11 +122,15 @@ class OwnerControllerTests {
 
     @Test
     void testProcessFindFormSuccess() throws Exception {
-        given(this.clinicService.findOwnerByLastName("")).willReturn(Lists.newArrayList(george, new Owner()));
+        Owner secondOwner = new Owner();
+        given(this.clinicService.findOwnerByLastName("")).willReturn(Lists.newArrayList(george, secondOwner));
 
         mockMvc.perform(get("/owners"))
             .andExpect(status().isOk())
+            .andExpect(model().attribute("selections", Lists.newArrayList(george, secondOwner)))
             .andExpect(view().name("owners/ownersList"));
+
+        verify(this.clinicService).findOwnerByLastName("");
     }
 
     @Test
@@ -113,6 +142,8 @@ class OwnerControllerTests {
         )
             .andExpect(status().is3xxRedirection())
             .andExpect(view().name("redirect:/owners/" + TEST_OWNER_ID));
+
+        verify(this.clinicService).findOwnerByLastName("Franklin");
     }
 
     @Test
@@ -124,6 +155,8 @@ class OwnerControllerTests {
             .andExpect(model().attributeHasFieldErrors("owner", "lastName"))
             .andExpect(model().attributeHasFieldErrorCode("owner", "lastName", "notFound"))
             .andExpect(view().name("owners/findOwners"));
+
+        verify(this.clinicService).findOwnerByLastName("Unknown Surname");
     }
 
     @Test
@@ -147,9 +180,21 @@ class OwnerControllerTests {
             .param("address", "123 Caramel Street")
             .param("city", "London")
             .param("telephone", "01616291589")
+            .param("id", "999")
         )
             .andExpect(status().is3xxRedirection())
-            .andExpect(view().name("redirect:/owners/{ownerId}"));
+            .andExpect(view().name("redirect:/owners/{ownerId}"))
+            .andExpect(redirectedUrl("/owners/" + TEST_OWNER_ID));
+
+        ArgumentCaptor<Owner> ownerCaptor = ArgumentCaptor.forClass(Owner.class);
+        verify(this.clinicService).saveOwner(ownerCaptor.capture());
+        Owner savedOwner = ownerCaptor.getValue();
+        assertThat(savedOwner.getId(), is(TEST_OWNER_ID));
+        assertThat(savedOwner.getFirstName(), is("Joe"));
+        assertThat(savedOwner.getLastName(), is("Bloggs"));
+        assertThat(savedOwner.getAddress(), is("123 Caramel Street"));
+        assertThat(savedOwner.getCity(), is("London"));
+        assertThat(savedOwner.getTelephone(), is("01616291589"));
     }
 
     @Test
@@ -164,6 +209,8 @@ class OwnerControllerTests {
             .andExpect(model().attributeHasFieldErrors("owner", "address"))
             .andExpect(model().attributeHasFieldErrors("owner", "telephone"))
             .andExpect(view().name("owners/createOrUpdateOwnerForm"));
+
+        verify(this.clinicService, never()).saveOwner(any(Owner.class));
     }
 
     @Test
