@@ -130,8 +130,9 @@ git diff 8614a5f --stat -- src               # expect no output (no code changes
 One atomic change: compiler output, runtime stack, and namespaces moved together.
 
 - Compiler: `maven.compiler.release` 21 replaces `source`/`target` 1.8. Classes are class-file version 65.
-  `maven.compiler.parameters=true` is added because Spring 6.1+ no longer reads parameter names from debug
-  info; without it, unannotated `@PathVariable int petId` fails at request time.
+  `maven.compiler.parameters=true` is required to preserve existing route binding: Spring 6.1+ no longer
+  reads parameter names from debug info, so without it the unannotated `@PathVariable int petId` fails at
+  request time. It is a compiler setting, not a dependency, and no controller source changed.
 - Dependency matrix:
 
   | Component | From | To |
@@ -146,7 +147,7 @@ One atomic change: compiler output, runtime stack, and namespaces moved together
   | Cache | Ehcache 2 (`EhCacheCacheManager`, `cache/ehcache.xml`) | Caffeine 3.3.1 (`CaffeineCacheManager`) |
   | Jetty plugin | `org.eclipse.jetty:jetty-maven-plugin` 9.4.43 | `org.eclipse.jetty.ee10:jetty-ee10-maven-plugin` 12.0.40 |
 
-- Required by Spring 6.2 but outside the planned matrix (flagged for sign-off):
+- Compatibility additions required by Spring 6.2, **approved by the user** and verified by the green suite:
   - Jackson BOM 2.12.4 → 2.19.4. Spring 6.2 needs Jackson 2.14+ (`DatatypeFeature`); MVC contexts failed to load.
   - JUnit Jupiter 5.8.1 → 5.14.4 (still JUnit 5). spring-test 6.2 calls `ExtensionContext.getExecutableInvoker()`.
   - `org.glassfish.expressly:expressly` 5.0.0, **test scope only**. It replaces the EL implementation that
@@ -174,6 +175,10 @@ One atomic change: compiler output, runtime stack, and namespaces moved together
   - Connection pool: kept `tomcat-jdbc` 9.0.46 (it does not use the servlet API; suite and smoke run green).
   - H2: kept 2.1.214 (suite and smoke run green).
   - Hibernate 6 JPQL: the `left join fetch` queries and raw `Query` usage worked unchanged. No query edits.
+  - Webjars (user-approved): Bootstrap 3.3.6 and jQuery 3.5.1 stay unchanged. Their existing page error
+    `Bootstrap's JavaScript requires jQuery version 1.9.1 or higher, but lower than version 3` is retained
+    as the only allowed baseline page error. Browser validation must show only localhost requests, no
+    console errors, and no new page errors beyond that exact message.
 
 Result: `mvn test` on JDK 21 → Tests run: 102, Failures: 0, Errors: 0, Skipped: 0 — BUILD SUCCESS
 (100 earlier tests + 2 ISO-date regression tests).
@@ -181,14 +186,16 @@ Result: `mvn test` on JDK 21 → Tests run: 102, Failures: 0, Errors: 0, Skipped
 ### Risks
 
 - JDK 8 can no longer build the project (class-file 65). The JDK 8 baseline counts in Milestone 1 remain the reference.
-- Jackson, JUnit, and test-scope EL are outside the approved matrix. They need reviewer sign-off.
+- Jackson 2.19.4, JUnit Jupiter 5.14.4, and test-scope Expressly 5.0.0 widen the dependency surface beyond the
+  original plan. The user approved them; Expressly must stay test scope (Jetty supplies EL at runtime).
 - Spring 6's ISO date fallback applies to any future `@DateTimeFormat(pattern=...)` field that does not set `fallbackPatterns`.
 - Hibernate logs `HHH90000025` because the H2 dialect is set explicitly. This is harmless, and it is left as is.
 - Jetty log noise grows (about 1,900 WARN lines, mostly "scanned from multiple locations"). The plugin
   classpath and the WAR both contain JSTL 3.0.1 and AspectJ classes. Benign.
-- Pre-existing, unchanged: Bootstrap 3.3.6 throws `Bootstrap's JavaScript requires jQuery ... lower than
-  version 3` against the baseline jQuery 3.5.1 webjar on every page. This is a browser page error, unrelated
-  to the server stack. Webjar changes are out of scope, so it is flagged and not fixed.
+- Pre-existing, unchanged: Bootstrap 3.3.6 throws `Bootstrap's JavaScript requires jQuery version 1.9.1 or
+  higher, but lower than version 3` against the baseline jQuery 3.5.1 webjar on every page. This is a browser
+  page error, unrelated to the server stack. The user approved retaining it with the webjars unchanged; any
+  other console or page error, or any non-localhost request, is a regression.
 - Lifecycle: Spring 6.2 open-source support ends June 2026; see `library/bank-risk-flags.md`. Flag only.
 - Bank risk flags (cross-owner pet edit, no authn/authz, raw exception page, demo data, debug/SQL
   logging, no audit trail) are unchanged and still flag-only.
@@ -211,4 +218,6 @@ curl -s http://localhost:8080/vets.xml; curl -s http://localhost:8080/vets.json
 In a browser, open `/owners/2` (Betty Davis, pet Basil, hamster, 2012-08-06). Create a synthetic owner.
 Add a pet with birth date `2021-06-15` (expect "invalid date"), then with `2021/06/15` (pet row shows
 2021-06-15). Submit an empty visit description (expect "must not be empty"), then a described visit (row
-appears on the owner page). Stop the server afterwards.
+appears on the owner page). Throughout, confirm every request goes to `localhost:8080`, the console shows
+no errors, and the only page error is the approved Bootstrap/jQuery message above. Also check
+`mvn dependency:tree` shows `expressly` 5.0.0 only in test scope. Stop the server afterwards.
