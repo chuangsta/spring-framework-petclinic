@@ -14,12 +14,15 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.hasProperty;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -208,6 +211,194 @@ class OwnerControllerTests {
             .andExpect(model().attributeHasErrors("owner"))
             .andExpect(model().attributeHasFieldErrors("owner", "address"))
             .andExpect(model().attributeHasFieldErrors("owner", "telephone"))
+            .andExpect(view().name("owners/createOrUpdateOwnerForm"));
+
+        verify(this.clinicService, never()).saveOwner(any(Owner.class));
+    }
+
+    @Test
+    void testProcessFindFormEmptyLastNameSearchesAllOwners() throws Exception {
+        Owner secondOwner = new Owner();
+        secondOwner.setId(2);
+        given(this.clinicService.findOwnerByLastName("")).willReturn(Lists.newArrayList(george, secondOwner));
+
+        mockMvc.perform(get("/owners")
+            .param("lastName", "")
+        )
+            .andExpect(status().isOk())
+            .andExpect(model().attribute("selections", Lists.newArrayList(george, secondOwner)))
+            .andExpect(view().name("owners/ownersList"));
+
+        verify(this.clinicService).findOwnerByLastName("");
+    }
+
+    @Test
+    void testProcessFindFormZeroResultsRendersNotFound() throws Exception {
+        given(this.clinicService.findOwnerByLastName("Nobody")).willReturn(Lists.newArrayList());
+
+        mockMvc.perform(get("/owners")
+            .param("lastName", "Nobody")
+        )
+            .andExpect(status().isOk())
+            .andExpect(model().attributeHasFieldErrorCode("owner", "lastName", "notFound"))
+            .andExpect(model().attributeDoesNotExist("selections"))
+            .andExpect(view().name("owners/findOwners"));
+
+        verify(this.clinicService).findOwnerByLastName("Nobody");
+    }
+
+    @Test
+    void testProcessFindFormSingleResultRedirectsToFoundOwner() throws Exception {
+        Owner jeff = new Owner();
+        jeff.setId(7);
+        jeff.setLastName("Black");
+        given(this.clinicService.findOwnerByLastName("Bla")).willReturn(Lists.newArrayList(jeff));
+
+        mockMvc.perform(get("/owners")
+            .param("lastName", "Bla")
+        )
+            .andExpect(status().is3xxRedirection())
+            .andExpect(view().name("redirect:/owners/7"))
+            .andExpect(redirectedUrl("/owners/7"));
+    }
+
+    @Test
+    void testProcessFindFormMultipleResultsRendersOwnersList() throws Exception {
+        Owner betty = new Owner();
+        betty.setId(2);
+        betty.setLastName("Davis");
+        Owner harold = new Owner();
+        harold.setId(4);
+        harold.setLastName("Davis");
+        given(this.clinicService.findOwnerByLastName("Davis")).willReturn(Lists.newArrayList(betty, harold));
+
+        mockMvc.perform(get("/owners")
+            .param("lastName", "Davis")
+        )
+            .andExpect(status().isOk())
+            .andExpect(model().attribute("selections", Lists.newArrayList(betty, harold)))
+            .andExpect(view().name("owners/ownersList"));
+    }
+
+    @Test
+    void testProcessCreationFormIgnoresPostedIdAndRedirectsToNewId() throws Exception {
+        int newOwnerId = 42;
+        Integer[] idBeforeSave = new Integer[1];
+        doAnswer(invocation -> {
+            Owner owner = invocation.getArgument(0);
+            idBeforeSave[0] = owner.getId();
+            owner.setId(newOwnerId);
+            return null;
+        }).when(this.clinicService).saveOwner(any(Owner.class));
+
+        mockMvc.perform(post("/owners/new")
+            .param("id", "999")
+            .param("firstName", "Testy")
+            .param("lastName", "Fakeowner")
+            .param("address", "1 Example Road")
+            .param("city", "Sampletown")
+            .param("telephone", "5550001111")
+        )
+            .andExpect(status().is3xxRedirection())
+            .andExpect(redirectedUrl("/owners/" + newOwnerId));
+
+        ArgumentCaptor<Owner> ownerCaptor = ArgumentCaptor.forClass(Owner.class);
+        verify(this.clinicService, times(1)).saveOwner(ownerCaptor.capture());
+        verifyNoMoreInteractions(this.clinicService);
+        assertThat(idBeforeSave[0], is(nullValue()));
+        Owner savedOwner = ownerCaptor.getValue();
+        assertThat(savedOwner.getFirstName(), is("Testy"));
+        assertThat(savedOwner.getLastName(), is("Fakeowner"));
+        assertThat(savedOwner.getAddress(), is("1 Example Road"));
+        assertThat(savedOwner.getCity(), is("Sampletown"));
+        assertThat(savedOwner.getTelephone(), is("5550001111"));
+    }
+
+    @Test
+    void testProcessUpdateOwnerFormAppliesPathOwnerIdExactlyOnce() throws Exception {
+        mockMvc.perform(post("/owners/{ownerId}/edit", 5)
+            .param("id", "999")
+            .param("firstName", "Testy")
+            .param("lastName", "Fakeowner")
+            .param("address", "1 Example Road")
+            .param("city", "Sampletown")
+            .param("telephone", "5550001111")
+        )
+            .andExpect(status().is3xxRedirection())
+            .andExpect(redirectedUrl("/owners/5"));
+
+        ArgumentCaptor<Owner> ownerCaptor = ArgumentCaptor.forClass(Owner.class);
+        verify(this.clinicService, times(1)).saveOwner(ownerCaptor.capture());
+        verifyNoMoreInteractions(this.clinicService);
+        Owner savedOwner = ownerCaptor.getValue();
+        assertThat(savedOwner.getId(), is(5));
+        assertThat(savedOwner.getFirstName(), is("Testy"));
+        assertThat(savedOwner.getLastName(), is("Fakeowner"));
+        assertThat(savedOwner.getAddress(), is("1 Example Road"));
+        assertThat(savedOwner.getCity(), is("Sampletown"));
+        assertThat(savedOwner.getTelephone(), is("5550001111"));
+    }
+
+    @Test
+    void testProcessCreationFormMissingAllRequiredFields() throws Exception {
+        mockMvc.perform(post("/owners/new"))
+            .andExpect(status().isOk())
+            .andExpect(model().attributeHasFieldErrorCode("owner", "firstName", "NotEmpty"))
+            .andExpect(model().attributeHasFieldErrorCode("owner", "lastName", "NotEmpty"))
+            .andExpect(model().attributeHasFieldErrorCode("owner", "address", "NotEmpty"))
+            .andExpect(model().attributeHasFieldErrorCode("owner", "city", "NotEmpty"))
+            .andExpect(model().attributeHasFieldErrorCode("owner", "telephone", "NotEmpty"))
+            .andExpect(view().name("owners/createOrUpdateOwnerForm"));
+
+        verify(this.clinicService, never()).saveOwner(any(Owner.class));
+    }
+
+    @Test
+    void testProcessCreationFormNonNumericTelephone() throws Exception {
+        mockMvc.perform(post("/owners/new")
+            .param("firstName", "Testy")
+            .param("lastName", "Fakeowner")
+            .param("address", "1 Example Road")
+            .param("city", "Sampletown")
+            .param("telephone", "555-ABC")
+        )
+            .andExpect(status().isOk())
+            .andExpect(model().errorCount(1))
+            .andExpect(model().attributeHasFieldErrorCode("owner", "telephone", "Digits"))
+            .andExpect(view().name("owners/createOrUpdateOwnerForm"));
+
+        verify(this.clinicService, never()).saveOwner(any(Owner.class));
+    }
+
+    @Test
+    void testProcessCreationFormOverLengthTelephone() throws Exception {
+        mockMvc.perform(post("/owners/new")
+            .param("firstName", "Testy")
+            .param("lastName", "Fakeowner")
+            .param("address", "1 Example Road")
+            .param("city", "Sampletown")
+            .param("telephone", "12345678901")
+        )
+            .andExpect(status().isOk())
+            .andExpect(model().errorCount(1))
+            .andExpect(model().attributeHasFieldErrorCode("owner", "telephone", "Digits"))
+            .andExpect(view().name("owners/createOrUpdateOwnerForm"));
+
+        verify(this.clinicService, never()).saveOwner(any(Owner.class));
+    }
+
+    @Test
+    void testProcessUpdateOwnerFormInvalidTelephone() throws Exception {
+        mockMvc.perform(post("/owners/{ownerId}/edit", TEST_OWNER_ID)
+            .param("firstName", "Testy")
+            .param("lastName", "Fakeowner")
+            .param("address", "1 Example Road")
+            .param("city", "Sampletown")
+            .param("telephone", "12345678901")
+        )
+            .andExpect(status().isOk())
+            .andExpect(model().errorCount(1))
+            .andExpect(model().attributeHasFieldErrorCode("owner", "telephone", "Digits"))
             .andExpect(view().name("owners/createOrUpdateOwnerForm"));
 
         verify(this.clinicService, never()).saveOwner(any(Owner.class));

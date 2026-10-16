@@ -65,6 +65,21 @@ abstract class AbstractClinicServiceTests {
     }
 
     @Test
+    void shouldReturnAllOwnersForEmptyLastName() {
+        Collection<Owner> owners = this.clinicService.findOwnerByLastName("");
+        assertThat(owners).hasSize(10);
+        assertThat(owners).extracting(Owner::getLastName).containsExactlyInAnyOrder(
+            "Franklin", "Davis", "Rodriquez", "Davis", "McTavish",
+            "Coleman", "Black", "Escobito", "Schroeder", "Estaban");
+    }
+
+    @Test
+    void shouldFindOwnersByLastNamePrefix() {
+        Collection<Owner> owners = this.clinicService.findOwnerByLastName("Es");
+        assertThat(owners).extracting(Owner::getLastName).containsExactlyInAnyOrder("Escobito", "Estaban");
+    }
+
+    @Test
     void shouldFindSingleOwnerWithPet() {
         Owner owner = this.clinicService.findOwnerById(1);
         assertThat(owner.getLastName()).startsWith("Franklin");
