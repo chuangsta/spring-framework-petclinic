@@ -26,11 +26,29 @@ Owner characterization:
 
 After the owner additions: `mvn test` on JDK 8 and JDK 21 → Tests run: 78, Failures: 0, Errors: 0, Skipped: 0.
 
+Pet characterization:
+- `PetControllerTests` (+10 tests; `reset(clinicService)` per test): valid create saves exactly once with the
+  exact bound name/type/`yyyy/MM/dd` birth date, linked to the URL owner, redirecting to `/owners/{ownerId}`;
+  a duplicate name within the owner (case-insensitive, existing pets only) gets a `duplicate` error on `name`
+  and no save, while an unsaved same-name pet is ignored; missing name, type, or birth date on create each
+  re-render `pets/createOrUpdatePetForm` with a `required` error and no save; edit GET loads by `petId`; edit
+  POST saves the bound fields (including posted `id`) linked to the URL owner; an edit with a posted `id` does
+  not require `type`. The misnamed `testProcessCreationFormHasErrors` (it posts to the edit URL) was renamed
+  to `testProcessUpdateFormWithoutIdRequiresType`, keeping its assertions and adding the `type` error code and
+  a no-save check.
+- **Bank risk flag, pinned as-is:** `testCrossOwnerPetEditSucceedsAsIs_bankRiskFlag` shows George's pet loads
+  and saves under Betty's URL path and is re-linked to Betty. Not fixed.
+- New pure-JUnit `OwnerTests` (+2, `getPet` case-insensitivity and ignore-new) and `PetValidatorTests` (+3).
+
+After the pet additions: `mvn test` on JDK 8 and JDK 21 → Tests run: 93, Failures: 0, Errors: 0, Skipped: 0.
+
 ### Risks
 
 - Tests pin current behavior, including quirks. Example: `@Digits(integer=10)` counts significant digits,
   so the existing 11-character telephone `01316761638` (leading zero) is accepted. A migration that changes
   this will fail the existing create test, which is intended.
+- Pet edit POST binds the pet from the request (hidden `id`), not from `findPetById`, and a pet with an `id`
+  is saved without a `type`. Both behaviors, and the cross-owner edit, are pinned on purpose.
 - Controller tests use a mocked `ClinicService`; persistence behavior is covered only by the service-level
   profile tests.
 
@@ -41,5 +59,6 @@ export PATH=/Users/chuangzhu/.m2/tools/apache-maven-3.9.16/bin:$PATH
 export JAVA_HOME=/Users/chuangzhu/.m2/tools/jdk-21.0.12.1+1/Contents/Home && mvn test
 export JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-8.jdk/Contents/Home && mvn test
 mvn test -Dtest='OwnerControllerTests,ClinicService*Tests'   # focused owner coverage
+mvn test -Dtest='PetControllerTests,PetValidatorTests,OwnerTests'   # focused pet coverage
 git diff 4bac3bd --stat -- src/main pom.xml                  # expect no output (test-only diff)
 ```
