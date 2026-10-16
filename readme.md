@@ -21,9 +21,8 @@ The "canonical" implementation is now based on Spring Boot, Thymeleaf and [aggre
 The project builds and tests with JDK 21 and Maven 3.9.16. The Maven wrapper (`./mvnw`) downloads
 Maven 3.9.16 on first use.
 
-The compiler output is still Java 8 (`maven.compiler.source`/`target` = `1.8`) because the current
-Spring 5 runtime cannot scan Java 21 class files. The switch to release 21 output happens together with
-the Spring 6.2 / Jakarta EE migration.
+The compiler targets Java 21 (`maven.compiler.release` = `21`) on Spring Framework 6.2 and Jakarta EE 10,
+so JDK 21 or newer is required; JDK 8 can no longer build the project.
 
 A prebuilt local toolchain can live under `~/.m2/tools` without changing the machine default JDK:
 

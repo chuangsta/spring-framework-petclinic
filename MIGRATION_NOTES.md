@@ -122,3 +122,93 @@ javap -v target/classes/org/springframework/samples/petclinic/model/Owner.class 
 ./mvnw --version                             # Apache Maven 3.9.16
 git diff 8614a5f --stat -- src               # expect no output (no code changes)
 ```
+
+## Milestone 3 — Spring Framework 6.2 / Jakarta EE 10 on Java 21
+
+### What changed
+
+One atomic change: compiler output, runtime stack, and namespaces moved together.
+
+- Compiler: `maven.compiler.release` 21 replaces `source`/`target` 1.8. Classes are class-file version 65.
+  `maven.compiler.parameters=true` is added because Spring 6.1+ no longer reads parameter names from debug
+  info; without it, unannotated `@PathVariable int petId` fails at request time.
+- Dependency matrix:
+
+  | Component | From | To |
+  | --- | --- | --- |
+  | Spring Framework | 5.3.22 (core resolved 5.3.11) | 6.2.19 |
+  | Spring Data BOM | 2021.1.0-RC1 | 2025.0.13 (spring-data-jpa 3.5.13); `repo.spring.io/milestone` removed |
+  | Hibernate | `org.hibernate:hibernate-entitymanager` 5.6.11 + `hibernate-ehcache` | `org.hibernate.orm:hibernate-core` 6.6.58.Final |
+  | Hibernate Validator | 6.2.0.Final | 8.0.6.Final |
+  | Servlet API (provided) | `tomcat-servlet-api` + `tomcat-jasper-el` 9.0.46 | `jakarta.servlet:jakarta.servlet-api` 6.0.0 |
+  | JAXB | `javax.xml.bind:jaxb-api` 2.3.1, `jaxb-runtime` 2.3.4, `javax.activation-api` | `jakarta.xml.bind-api` 4.0.5 + `jaxb-runtime` 4.0.9 |
+  | JSTL | `taglibs-standard-jstlel` 1.2.5 | `org.glassfish.web:jakarta.servlet.jsp.jstl` 3.0.1 + `jakarta.servlet.jsp.jstl-api` 3.0.0 (provided) |
+  | Cache | Ehcache 2 (`EhCacheCacheManager`, `cache/ehcache.xml`) | Caffeine 3.3.1 (`CaffeineCacheManager`) |
+  | Jetty plugin | `org.eclipse.jetty:jetty-maven-plugin` 9.4.43 | `org.eclipse.jetty.ee10:jetty-ee10-maven-plugin` 12.0.40 |
+
+- Required by Spring 6.2 but outside the planned matrix (flagged for sign-off):
+  - Jackson BOM 2.12.4 → 2.19.4. Spring 6.2 needs Jackson 2.14+ (`DatatypeFeature`); MVC contexts failed to load.
+  - JUnit Jupiter 5.8.1 → 5.14.4 (still JUnit 5). spring-test 6.2 calls `ExtensionContext.getExecutableInvoker()`.
+  - `org.glassfish.expressly:expressly` 5.0.0, **test scope only**. It replaces the EL implementation that
+    the removed provided `tomcat-jasper-el` supplied to Hibernate Validator in tests. At runtime Jetty EE10
+    supplies EL; validation messages render unchanged (`must not be empty`).
+- Namespaces: `javax.persistence`, `javax.validation`, `javax.servlet`, `javax.xml.bind` → `jakarta.*` in
+  20 files (model, JPA repositories, controllers, `PetclinicInitializer`, `ValidatorTests`).
+  `javax.sql.DataSource` is Java SE and unchanged.
+- Cache: `tools-config.xml` defines `CaffeineCacheManager` with cache `vets` and
+  `maximumSize=100,expireAfterWrite=60s`. Setting the cache names keeps the manager static, like the
+  Ehcache setup, which only had configured caches. In memory only, no disk. `@Cacheable("vets")` is unchanged.
+  `cache/ehcache.xml` and `cache/ehcache.xsd` are deleted.
+- Container: `WEB-INF/jetty-web.xml` configures `org.eclipse.jetty.ee10.webapp.WebAppContext` with
+  `parentLoaderPriority=true` retained. `mvn jetty:run-war` on port 8080 still works.
+- Date binding fix (behavior preservation): Spring 6 `TemporalAccessorParser` falls back to ISO parsing
+  when a `@DateTimeFormat` pattern fails and no fallback patterns are set, so `2021-06-15` was silently
+  accepted. `Pet.birthDate` and `Visit.date` now declare `fallbackPatterns = "yyyy/MM/dd"` (same pattern),
+  which turns that ISO fallback off. ISO input is rejected with `typeMismatch` ("invalid date") as before.
+  New tests `PetControllerTests.testProcessCreationFormRejectsIsoBirthDate` and
+  `VisitControllerTests.testProcessNewVisitFormRejectsIsoDate` pin this. Both fail without the fix.
+- Decisions:
+  - JSTL taglib URIs: kept the legacy `http://java.sun.com/jsp/jstl/*` URIs. Pages render correctly on
+    Jetty EE10 with JSTL 3.0.1.
+  - JSTL API scope: `provided` works. Jetty supplies the API, and the implementation jar ships in the WAR.
+  - Connection pool: kept `tomcat-jdbc` 9.0.46 (it does not use the servlet API; suite and smoke run green).
+  - H2: kept 2.1.214 (suite and smoke run green).
+  - Hibernate 6 JPQL: the `left join fetch` queries and raw `Query` usage worked unchanged. No query edits.
+
+Result: `mvn test` on JDK 21 → Tests run: 102, Failures: 0, Errors: 0, Skipped: 0 — BUILD SUCCESS
+(100 earlier tests + 2 ISO-date regression tests).
+
+### Risks
+
+- JDK 8 can no longer build the project (class-file 65). The JDK 8 baseline counts in Milestone 1 remain the reference.
+- Jackson, JUnit, and test-scope EL are outside the approved matrix. They need reviewer sign-off.
+- Spring 6's ISO date fallback applies to any future `@DateTimeFormat(pattern=...)` field that does not set `fallbackPatterns`.
+- Hibernate logs `HHH90000025` because the H2 dialect is set explicitly. This is harmless, and it is left as is.
+- Jetty log noise grows (about 1,900 WARN lines, mostly "scanned from multiple locations"). The plugin
+  classpath and the WAR both contain JSTL 3.0.1 and AspectJ classes. Benign.
+- Pre-existing, unchanged: Bootstrap 3.3.6 throws `Bootstrap's JavaScript requires jQuery ... lower than
+  version 3` against the baseline jQuery 3.5.1 webjar on every page. This is a browser page error, unrelated
+  to the server stack. Webjar changes are out of scope, so it is flagged and not fixed.
+- Lifecycle: Spring 6.2 open-source support ends June 2026; see `library/bank-risk-flags.md`. Flag only.
+- Bank risk flags (cross-owner pet edit, no authn/authz, raw exception page, demo data, debug/SQL
+  logging, no audit trail) are unchanged and still flag-only.
+
+### How a reviewer verifies
+
+```sh
+export JAVA_HOME=/Users/chuangzhu/.m2/tools/jdk-21.0.12.1+1/Contents/Home
+export PATH=/Users/chuangzhu/.m2/tools/apache-maven-3.9.16/bin:$PATH
+mvn clean -q && mvn test                    # 102 tests, 0 failures/errors/skips
+javap -v target/classes/org/springframework/samples/petclinic/model/Owner.class | grep major   # 65
+mvn dependency:tree                         # spring 6.2.19, spring-data-jpa 3.5.13, hibernate-core 6.6.58.Final, caffeine 3.3.1; no javax EE / ehcache
+rg -n "javax\.(servlet|persistence|validation|xml\.bind)" src/   # no matches
+mvn -DskipTests jetty:run-war -Djetty.http.port=8080          # then, in another shell:
+curl -s http://localhost:8080/                       # Welcome page
+curl -s "http://localhost:8080/owners?lastName=Davis"  # Betty Davis + Harold Davis
+curl -s http://localhost:8080/vets.xml; curl -s http://localhost:8080/vets.json
+```
+
+In a browser, open `/owners/2` (Betty Davis, pet Basil, hamster, 2012-08-06). Create a synthetic owner.
+Add a pet with birth date `2021-06-15` (expect "invalid date"), then with `2021/06/15` (pet row shows
+2021-06-15). Submit an empty visit description (expect "must not be empty"), then a described visit (row
+appears on the owner page). Stop the server afterwards.

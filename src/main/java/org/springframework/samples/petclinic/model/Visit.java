@@ -17,12 +17,12 @@ package org.springframework.samples.petclinic.model;
 
 import org.springframework.format.annotation.DateTimeFormat;
 
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.JoinColumn;
-import javax.persistence.ManyToOne;
-import javax.persistence.Table;
-import javax.validation.constraints.NotEmpty;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import jakarta.validation.constraints.NotEmpty;
 import java.time.LocalDate;
 
 /**
@@ -38,7 +38,8 @@ public class Visit extends BaseEntity {
      * Holds value of property date.
      */
     @Column(name = "visit_date")
-    @DateTimeFormat(pattern = "yyyy/MM/dd")
+    // Spring 6 falls back to ISO parsing unless fallback patterns are set; repeating the pattern keeps ISO input rejected
+    @DateTimeFormat(pattern = "yyyy/MM/dd", fallbackPatterns = "yyyy/MM/dd")
     private LocalDate date;
 
     /**

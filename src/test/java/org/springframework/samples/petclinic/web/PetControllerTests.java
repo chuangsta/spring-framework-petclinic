@@ -193,6 +193,20 @@ class PetControllerTests {
     }
 
     @Test
+    void testProcessCreationFormRejectsIsoBirthDate() throws Exception {
+        mockMvc.perform(post("/owners/{ownerId}/pets/new", TEST_OWNER_ID)
+            .param("name", "Bubbles")
+            .param("type", "hamster")
+            .param("birthDate", "2015-02-12")
+        )
+            .andExpect(status().isOk())
+            .andExpect(model().attributeHasFieldErrorCode("pet", "birthDate", "typeMismatch"))
+            .andExpect(view().name("pets/createOrUpdatePetForm"));
+
+        verify(this.clinicService, never()).savePet(any(Pet.class));
+    }
+
+    @Test
     void testProcessCreationFormMissingBirthDate() throws Exception {
         mockMvc.perform(post("/owners/{ownerId}/pets/new", TEST_OWNER_ID)
             .param("name", "Bubbles")

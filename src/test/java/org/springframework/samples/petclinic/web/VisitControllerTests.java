@@ -106,6 +106,19 @@ class VisitControllerTests {
     }
 
     @Test
+    void testProcessNewVisitFormRejectsIsoDate() throws Exception {
+        mockMvc.perform(post("/owners/{ownerId}/pets/{petId}/visits/new", TEST_OWNER_ID, TEST_PET_ID)
+            .param("date", "2013-01-04")
+            .param("description", "Rabies shot")
+        )
+            .andExpect(status().isOk())
+            .andExpect(model().attributeHasFieldErrorCode("visit", "date", "typeMismatch"))
+            .andExpect(view().name("pets/createOrUpdateVisitForm"));
+
+        verify(this.clinicService, never()).saveVisit(any(Visit.class));
+    }
+
+    @Test
     void testProcessNewVisitFormSavesBoundVisitWithDefaultDate() throws Exception {
         LocalDate before = LocalDate.now();
 
