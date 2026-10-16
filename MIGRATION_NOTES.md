@@ -221,3 +221,52 @@ Add a pet with birth date `2021-06-15` (expect "invalid date"), then with `2021/
 appears on the owner page). Throughout, confirm every request goes to `localhost:8080`, the console shows
 no errors, and the only page error is the approved Bootstrap/jQuery message above. Also check
 `mvn dependency:tree` shows `expressly` 5.0.0 only in test scope. Stop the server afterwards.
+
+## Milestone 4 — Cleanup and dependency review
+
+### What changed
+
+Behavior-preserving cleanup only. No production code, dependency versions, routes, views, or validation changed.
+
+- `pom.xml`: removed the retired `maven-eclipse-plugin` (2.10) and its version property. It had no
+  executions, generated pre-m2e Eclipse metadata only when invoked as `mvn eclipse:eclipse`, and is not
+  used by m2e, the build lifecycle, or CI.
+- `pom.xml`: removed the `maven-assembly-plugin` (3.3.0) declaration and its version property. It had no
+  executions, nothing in the repository or CI invoked `assembly:single`, and its `jar-with-dependencies`
+  descriptor does not apply to this WAR project.
+- `ClinicServiceJdbcTests`: removed the unused JUnit 4 `SpringJUnit4ClassRunner` import and the unused
+  `ContextConfiguration` import. The class already runs on JUnit 5 through `@SpringJUnitConfig`.
+- `readme.md`: describes the final stack (Java 21, Spring Framework 6.2, Spring Data JPA 3.5, Hibernate ORM
+  6.6, Jakarta EE 10, Jetty 12 EE10 plugin). The obsolete Jetty 9.4 / Tomcat 9 javax-container prerequisite
+  is replaced with an optional Jakarta EE 10 container (Jetty 12 EE10 or Tomcat 10.1). The deployed WAR name
+  is corrected to `petclinic.war`, and an empty IntelliJ "prerequisites" section is removed.
+- Left in place on purpose:
+  - The Jib plugin (2.6.0) is unchanged. Its default base image predates Jakarta EE 10. This is flag-only
+    for the dependency review; the readme notes it.
+  - The `mockito-core` dependency of `wro4j-maven-plugin` ("Required for Java 9 and above") was kept,
+    because removing it could not be shown to be safe without changing the CSS build.
+  - `junit-jupiter-engine` and `mockito-junit-jupiter` have no `test` scope, so they ship in the WAR.
+    Changing their scope changes WAR contents, so it is left for the dependency review.
+
+Result: `mvn test` on JDK 21 → Tests run: 102, Failures: 0, Errors: 0, Skipped: 0 — BUILD SUCCESS.
+`mvn -DskipTests package` still builds `target/petclinic.war`.
+
+### Risks
+
+- Developers who generated Eclipse metadata with `mvn eclipse:eclipse` must use m2e (Import → Existing
+  Maven project) instead. The readme already documents m2e.
+- Anyone who ran `mvn assembly:single` would now get the plugin's defaults, which need a descriptor. The
+  goal never produced a usable artifact for this WAR.
+- The Jib image and the bank risk flags in `library/bank-risk-flags.md` are unchanged and still flag-only.
+
+### How a reviewer verifies
+
+```sh
+export JAVA_HOME=/Users/chuangzhu/.m2/tools/jdk-21.0.12.1+1/Contents/Home
+export PATH=/Users/chuangzhu/.m2/tools/apache-maven-3.9.16/bin:$PATH
+git diff HEAD~1 -- pom.xml src/       # only removals: two plugin blocks, two properties, two imports
+mvn test                               # 102 tests, 0 failures/errors/skips
+mvn -DskipTests package                # target/petclinic.war builds
+rg -n "eclipse-plugin|assembly-plugin|SpringJUnit4ClassRunner" pom.xml src/   # no matches
+rg -n "jib-maven-plugin" pom.xml       # still present, unchanged
+```

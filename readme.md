@@ -9,6 +9,9 @@ It allows the Spring community to maintain a Petclinic version with a plain old 
 and with a **3-layer architecture** (i.e. presentation --> service --> repository).
 The "canonical" implementation is now based on Spring Boot, Thymeleaf and [aggregate-oriented domain]([https://github.com/spring-projects/spring-petclinic/pull/200). 
 
+This version runs on Java 21 with Spring Framework 6.2, Spring Data JPA 3.5, Hibernate ORM 6.6 and Jakarta EE 10
+(Servlet 6.0, JSP/JSTL 3.0). It is packaged as a WAR and run locally with the Jetty 12 EE10 Maven plugin.
+
 
 ## Understanding the Spring Petclinic application with a few diagrams
 
@@ -138,7 +141,8 @@ The following items should be installed in your system:
 * JDK 21 (full JDK not a JRE), selected through `JAVA_HOME`
 * Maven 3.9+ (http://maven.apache.org/install.html), or the bundled `./mvnw` wrapper (Maven 3.9.16)
 * git command line tool (https://help.github.com/articles/set-up-git)
-* Jetty 9.4+ or Tomcat 9+
+* Optional: a Jakarta EE 10 (Servlet 6.0) web container such as Jetty 12 (EE10) or Tomcat 10.1, if you prefer
+  deploying the WAR from your IDE instead of running `./mvnw jetty:run-war`
 * Your prefered IDE 
   * Eclipse with the m2e plugin. Note: when m2e is available, there is an m2 icon in Help -> About dialog. If m2e is not there, just follow the install process here: http://www.eclipse.org/m2e/
   * [Spring Tools Suite](https://spring.io/tools) (STS)
@@ -157,7 +161,8 @@ git clone https://github.com/spring-petclinic/spring-framework-petclinic.git
 File -> Import -> Maven -> Existing Maven project
 ```
 Then either build on the command line `./mvnw generate-resources` or using the Eclipse launcher (right click on project and `Run As -> Maven install`) to generate the CSS.
-Configure a Jetty or a Tomcat web container then deploy the `spring-petclinic.war` file.
+Run `./mvnw jetty:run-war` from the command line, or configure a Jakarta EE 10 web container (Jetty 12 EE10 or
+Tomcat 10.1) and deploy the `petclinic.war` file.
 
 3) Inside IntelliJ IDEA
 
@@ -166,19 +171,14 @@ In the main menu, select `File > Open` and select the Petclinic [pom.xml](pom.
 CSS files are generated from the Maven build. You can either build them on the command line `./mvnw generate-resources` 
 or right click on the `spring-petclinic` project then `Maven -> Generates sources and Update Folders`.
 
-Go to the `Run -> Edit Configuration` then configure a Tomcat or a Jetty web container. Deploy the `spring-petclinic.war` file.
+Set the project SDK to JDK 21. Then either run the `jetty:run-war` Maven goal, or go to `Run -> Edit Configuration`,
+configure a Jakarta EE 10 web container (Jetty 12 EE10 or Tomcat 10.1), and deploy the `petclinic.war` file.
 Run the application by clicking on the `Run` icon.
 
 
 4) Navigate to Petclinic
 
 Visit [http://localhost:8080](http://localhost:8080) in your browser.
-
-
-## Working with Petclinic in IntelliJ IDEA
-
-### prerequisites
-The following items should be installed in your system:
 
 
 ## Looking for something in particular?
@@ -215,6 +215,9 @@ repository.
 The [pom.xml](pom.xml) has been configured to publish the image with a the `springcommunity/spring-framework-petclinic` image name.
 
 Jib containerizes this WAR project by using the [distroless Jetty](https://github.com/GoogleContainerTools/distroless/tree/master/java/jetty) as a base image.
+
+Note: the Jib configuration has not been updated for this migration. Its default base image predates Jakarta EE 10,
+so it may not run this WAR. This is listed for review in the dependency risk review; verify the image before publishing.
 
 Build and push the container image of Petclinic to the Docker Hub registry:
 ```
