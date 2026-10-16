@@ -42,6 +42,17 @@ Pet characterization:
 
 After the pet additions: `mvn test` on JDK 8 and JDK 21 → Tests run: 93, Failures: 0, Errors: 0, Skipped: 0.
 
+Visit characterization:
+- `VisitControllerTests` (+4 tests; `reset(clinicService)` per test, app conversion service): an empty
+  description re-renders `pets/createOrUpdateVisitForm` with a `NotEmpty` error on `description` and no save;
+  a valid visit saves exactly once with the exact description, linked to the path pet, dated today when no
+  date is posted, and redirects to `/owners/{ownerId}`; an explicit `yyyy/MM/dd` date binds exactly; the
+  visit list is date-descending for an out-of-order fixture.
+- New pure-JUnit `VisitTests` (+3): a new visit defaults to today, `Pet.addVisit` links the pet, and
+  `Pet.getVisits()` sorts newest-first.
+
+After the visit additions: `mvn test` on JDK 8 and JDK 21 → Tests run: 100, Failures: 0, Errors: 0, Skipped: 0.
+
 ### Risks
 
 - Tests pin current behavior, including quirks. Example: `@Digits(integer=10)` counts significant digits,
@@ -49,6 +60,9 @@ After the pet additions: `mvn test` on JDK 8 and JDK 21 → Tests run: 93, Failu
   this will fail the existing create test, which is intended.
 - Pet edit POST binds the pet from the request (hidden `id`), not from `findPetById`, and a pet with an `id`
   is saved without a `type`. Both behaviors, and the cross-owner edit, are pinned on purpose.
+- `VisitController`'s `@ModelAttribute("visit")` runs on every request, including the visit list, and
+  attaches an unsaved visit dated today to the loaded pet. With the mocked service that visit appears first
+  in `visits`; the ordering test pins this rather than hiding it.
 - Controller tests use a mocked `ClinicService`; persistence behavior is covered only by the service-level
   profile tests.
 
@@ -60,5 +74,6 @@ export JAVA_HOME=/Users/chuangzhu/.m2/tools/jdk-21.0.12.1+1/Contents/Home && mvn
 export JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-8.jdk/Contents/Home && mvn test
 mvn test -Dtest='OwnerControllerTests,ClinicService*Tests'   # focused owner coverage
 mvn test -Dtest='PetControllerTests,PetValidatorTests,OwnerTests'   # focused pet coverage
+mvn test -Dtest='VisitControllerTests,VisitTests'   # focused visit coverage
 git diff 4bac3bd --stat -- src/main pom.xml                  # expect no output (test-only diff)
 ```
