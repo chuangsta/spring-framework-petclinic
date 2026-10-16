@@ -270,3 +270,36 @@ mvn -DskipTests package                # target/petclinic.war builds
 rg -n "eclipse-plugin|assembly-plugin|SpringJUnit4ClassRunner" pom.xml src/   # no matches
 rg -n "jib-maven-plugin" pom.xml       # still present, unchanged
 ```
+
+### Dependency vulnerability review
+
+Documentation only. `DEPENDENCY_RISK_REVIEW.md` reviews the graph resolved by `mvn dependency:tree` (JDK 21,
+default H2 profile), plus the optional profile drivers and build plugins. It uses one-time public advisory
+lookups on 2026-10-16 (OSV, spring.io, endoflife.date, the Jib docs). No version, scope, or code changed, and no
+scanner or runtime network call was added.
+
+- Advisories found on shipped dependencies:
+  - spring-webmvc 6.2.19: two Critical advisories with no OSS 6.2 fix (the app uses neither SSE nor `XsltView`).
+  - Jackson 2.19.4: the 2.19 line receives no fixes.
+  - logback 1.2.6: unmaintained line, including High CVE-2023-6378.
+  - H2 2.1.214: CVE-2022-45868.
+  - Bootstrap 3.3.6 and jQuery UI 1.12.1: XSS advisories.
+- Test-only dependencies with advisories (assertj, json-path/json-smart) are recommended upgrades.
+- The HSQLDB, MySQL, and PostgreSQL profile drivers all have advisories and need sign-off before use.
+- The bank sign-off register has 11 items:
+  1. Cross-owner pet edit.
+  2. No authentication or authorization.
+  3. Raw exception message in `exception.jsp`.
+  4. Demo credentials and PII-like seed data.
+  5. Debug and SQL logging.
+  6. No audit trail.
+  7. Spring 6.2 OSS end of support (2026-06-30; commercial support needed).
+  8. Spring Data 2025.0 / Hibernate 6.6 lifecycle.
+  9. Stale Jib base image (`gcr.io/distroless/java/jetty`, `javax`).
+  10. Behavior-preservation pins.
+  11. Compile-scope JUnit Jupiter / Mockito jars shipped in `WEB-INF/lib`. The recommended test-scope fix is
+      documented and not applied.
+
+Risks: advisory data reflects the lookup date only, and every disposition other than "keep" needs a bank decision.
+Reviewer verification: follow the "How a reviewer verifies" section of `DEPENDENCY_RISK_REVIEW.md`, and confirm
+`git diff HEAD~1 -- pom.xml src/` is empty for the review commit.
