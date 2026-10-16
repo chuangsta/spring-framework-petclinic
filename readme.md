@@ -16,6 +16,34 @@ The "canonical" implementation is now based on Spring Boot, Thymeleaf and [aggre
 
 ## Running petclinic locally
 
+### Build toolchain: JDK 21 and Maven 3.9
+
+The project builds and tests with JDK 21 and Maven 3.9.16. The Maven wrapper (`./mvnw`) downloads
+Maven 3.9.16 on first use.
+
+The compiler output is still Java 8 (`maven.compiler.source`/`target` = `1.8`) because the current
+Spring 5 runtime cannot scan Java 21 class files. The switch to release 21 output happens together with
+the Spring 6.2 / Jakarta EE migration.
+
+A prebuilt local toolchain can live under `~/.m2/tools` without changing the machine default JDK:
+
+* JDK 21 (Temurin 21.0.12.1+1): `~/.m2/tools/jdk-21.0.12.1+1/Contents/Home`
+* Maven 3.9.16: `~/.m2/tools/apache-maven-3.9.16`
+
+Select them for the current shell only through `JAVA_HOME` and `PATH`:
+```
+export JAVA_HOME=~/.m2/tools/jdk-21.0.12.1+1/Contents/Home
+export PATH=~/.m2/tools/apache-maven-3.9.16/bin:$PATH
+java -version   # 21.0.12.1
+mvn --version   # Apache Maven 3.9.16, Java version: 21.0.12.1
+```
+
+Run the tests and build the WAR:
+```
+mvn test
+mvn -DskipTests package
+```
+
 ### With Maven command line
 ```
 git clone https://github.com/spring-petclinic/spring-framework-petclinic.git
@@ -23,6 +51,7 @@ cd spring-framework-petclinic
 ./mvnw jetty:run-war
 # For Windows : ./mvnw.cmd jetty:run-war
 ```
+Run these commands with `JAVA_HOME` pointing at JDK 21, as shown above.
 
 ### With Docker
 ```
@@ -107,8 +136,8 @@ As an example, you may use the `-Dspring.profiles.active=jdbc` VM options to sta
 
 ### Prerequisites
 The following items should be installed in your system:
-* Java 8 or newer (full JDK not a JRE)
-* Maven 3.3+ (http://maven.apache.org/install.html)
+* JDK 21 (full JDK not a JRE), selected through `JAVA_HOME`
+* Maven 3.9+ (http://maven.apache.org/install.html), or the bundled `./mvnw` wrapper (Maven 3.9.16)
 * git command line tool (https://help.github.com/articles/set-up-git)
 * Jetty 9.4+ or Tomcat 9+
 * Your prefered IDE 

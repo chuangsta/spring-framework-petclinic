@@ -77,3 +77,48 @@ mvn test -Dtest='PetControllerTests,PetValidatorTests,OwnerTests'   # focused pe
 mvn test -Dtest='VisitControllerTests,VisitTests'   # focused visit coverage
 git diff 4bac3bd --stat -- src/main pom.xml                  # expect no output (test-only diff)
 ```
+
+## Milestone 2 — Java 21 build toolchain
+
+### What changed
+
+Build tooling only. No production code, test code, or runtime dependency changes.
+
+- `pom.xml` build plugins: maven-compiler-plugin 3.8.1 → 3.14.1, maven-surefire-plugin 2.22.1 → 3.5.5
+  (same `**/*Tests.java` includes), maven-war-plugin 3.3.1 → 3.5.1, jacoco-maven-plugin 0.8.6 → 0.8.13.
+- `maven.compiler.source`/`target` stay at `1.8`. Compiled classes remain class-file version 52.
+- Maven wrapper (`.mvn/wrapper/maven-wrapper.properties`): Maven 3.5.4 → 3.9.16.
+- CI (`.github/workflows/maven-build.yml`): the 8/11/17 matrix is replaced by Java 21 (Temurin, since the
+  `adopt` distribution has no Java 21 builds); checkout/setup-java actions move to v4. Triggers are unchanged.
+- `readme.md`: documents the JDK 21 / Maven 3.9.16 toolchain under `~/.m2/tools`, `JAVA_HOME`/`PATH`
+  selection, and the `mvn test` / `mvn -DskipTests package` / `./mvnw jetty:run-war` instructions.
+
+Result: `mvn test` on JDK 21 → Tests run: 100, Failures: 0, Errors: 0, Skipped: 0 — BUILD SUCCESS.
+
+### Why compiler output stays at release 8 until Milestone 3
+
+The Spring 5 runtime's ASM cannot parse class-file version 65. A release-21 probe failed 88 of 100 tests
+with `Unsupported class file major version 65` during component scanning. Aligning Spring 5 to 5.3.39 would
+fix that, but it is an unapproved intermediate runtime change. Release 21 therefore moves with the atomic
+Spring 6.2/Jakarta migration in Milestone 3.
+
+### Risks
+
+- Stale `target/` output: classes compiled earlier at release 21 are not always recompiled by the
+  incremental compiler and cause the same 88 errors. Run `mvn clean` once if `javap` shows major version 65.
+- JDK 8 still builds this milestone. After Milestone 3 it cannot. The JDK 8 baseline counts above remain the
+  reference.
+- Pre-existing context only: `spring-framework.version` declares 5.3.22, but `spring-core` resolves to
+  5.3.11. It is intentionally not aligned here. Milestone 3 replaces the Spring line.
+- Surefire 3.x keeps the explicit `**/*Tests.java` includes, so the executed test set is unchanged (100 tests).
+
+### How a reviewer verifies
+
+```sh
+export JAVA_HOME=/Users/chuangzhu/.m2/tools/jdk-21.0.12.1+1/Contents/Home
+export PATH=/Users/chuangzhu/.m2/tools/apache-maven-3.9.16/bin:$PATH
+mvn clean -q && mvn test                     # 100 tests, 0 failures/errors/skips
+javap -v target/classes/org/springframework/samples/petclinic/model/Owner.class | grep major   # 52
+./mvnw --version                             # Apache Maven 3.9.16
+git diff 8614a5f --stat -- src               # expect no output (no code changes)
+```
