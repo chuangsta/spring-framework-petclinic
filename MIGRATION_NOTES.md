@@ -1,5 +1,8 @@
 # Migration Notes
 
+> The `JAVA_HOME`/`PATH` commands below are kept as recorded on the original macOS machine. For current,
+> platform-neutral setup and build commands, see `AGENTS.md` and `readme.md`.
+
 ## Milestone 1 — Characterization tests and baseline
 
 ### Baseline (before any edit, commit `4bac3bd`, Maven 3.9.16)
