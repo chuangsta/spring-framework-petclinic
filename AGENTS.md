@@ -24,13 +24,24 @@ Branch topology:
 
 ## Build and test (exact commands, verified)
 
+Requires JDK 21 only. Maven comes from the wrapper, so use `./mvnw` from the repo root. Point
+`JAVA_HOME` at your JDK 21 (the folder name depends on the machine; check `ls ~/.m2/tools`):
+
 ```sh
-export JAVA_HOME=/Users/chuangzhu/.m2/tools/jdk-21.0.12.1+1/Contents/Home
-export PATH=/Users/chuangzhu/.m2/tools/apache-maven-3.9.16/bin:$PATH
-mvn clean test                 # expect: Tests run: 102, Failures: 0, Errors: 0, Skipped: 0
-mvn -DskipTests jetty:run-war   # app on http://localhost:8080 (stop with Ctrl-C)
-mvn -DskipTests package         # target/petclinic.war
+# Linux, Temurin unpacked under ~/.m2/tools (adjust the version folder to match what you installed)
+export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9"
+# macOS: the JDK sits under .../<jdk-folder>/Contents/Home, e.g. "$HOME/.m2/tools/jdk-21.0.12.1+1/Contents/Home"
+export PATH="$JAVA_HOME/bin:$PATH"
+java -version                       # must report 21.x
+
+./mvnw clean test                   # expect: Tests run: 102, Failures: 0, Errors: 0, Skipped: 0
+./mvnw -DskipTests jetty:run-war    # app on http://localhost:8080 (stop with Ctrl-C)
+./mvnw -DskipTests package          # target/petclinic.war
 ```
+
+If `./mvnw` reports "JAVA_HOME is not defined correctly", `JAVA_HOME` is unset or points at the wrong
+folder. Fix that first; do not treat it as a test failure. In a non-interactive shell, run the `export`
+lines in the same command as `./mvnw`, because exports do not carry over between separate shell sessions.
 
 Smoke checks against the running app (H2 seeded data):
 

@@ -3,6 +3,9 @@
 Review date: 2026-10-16. Scope: the migrated stack on branch `mission-demo` (Java 21, Spring Framework 6.2.19,
 Jakarta EE 10).
 
+The `JAVA_HOME`/`PATH` commands in "How a reviewer verifies" are kept as recorded on the original macOS machine.
+For current, platform-neutral setup, see `AGENTS.md` and `readme.md`.
+
 This is a documentation-only review. It changes no dependency version or scope, adds no scanner service or
 runtime network call, and applies no remediation. Every "recommended upgrade" or "sign-off required" item
 needs separate bank authorization.
