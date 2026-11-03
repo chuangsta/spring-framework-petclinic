@@ -26,6 +26,8 @@
         <!-- https://github.com/spring-projects/spring-boot/blob/master/spring-boot-project/spring-boot-dependencies/build.gradle -->
         <spring-framework.version>6.2.19</spring-framework.version>
         <spring-boot.version>3.5.16</spring-boot.version>
+        <!-- Embedded Servlet container of the executable WAR; same release as the Jetty Maven plugin -->
+        <jetty.version>12.0.40</jetty.version>
 
         <!-- Web dependencies -->
         <!-- Version update should also be done in wro.xml, petclinic.less and static resources: htmlHeader.tag and footer.tag-->
@@ -120,6 +122,22 @@
                 <scope>import</scope>
                 <type>pom</type>
             </dependency>
+            <!-- Keep every Jetty 12 artifact (embedded server, EE10 servlet and JSP) at ${jetty.version}
+                 instead of the Jetty release managed by the Spring Boot BOM -->
+            <dependency>
+                <groupId>org.eclipse.jetty</groupId>
+                <artifactId>jetty-bom</artifactId>
+                <version>${jetty.version}</version>
+                <scope>import</scope>
+                <type>pom</type>
+            </dependency>
+            <dependency>
+                <groupId>org.eclipse.jetty.ee10</groupId>
+                <artifactId>jetty-ee10-bom</artifactId>
+                <version>${jetty.version}</version>
+                <scope>import</scope>
+                <type>pom</type>
+            </dependency>
             <!-- Imported last: entries above and explicit versions in this project take precedence -->
             <dependency>
                 <groupId>org.springframework.boot</groupId>
@@ -177,6 +195,40 @@
     </dependencyManagement>
 
     <dependencies>
+        <!-- Spring Boot runtime (executable WAR and SpringBootServletInitializer); MVC stays configured in XML -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+        <!-- Embedded Jetty EE10 and JSP support. Provided: packaged in WEB-INF/lib-provided, so they are used by
+             the executable WAR but not deployed into an external Servlet container -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jetty</artifactId>
+            <scope>provided</scope>
+            <exclusions>
+                <!-- Expression Language comes only from the Jetty JSP integration (Mortbay Apache EL) -->
+                <exclusion>
+                    <groupId>org.apache.tomcat.embed</groupId>
+                    <artifactId>tomcat-embed-el</artifactId>
+                </exclusion>
+                <!-- ASM is only used by Jetty annotation scanning, which embedded Spring Boot does not run.
+                     Excluding it keeps org.ow2.asm:asm at its existing test-only scope and pinned version -->
+                <exclusion>
+                    <groupId>org.ow2.asm</groupId>
+                    <artifactId>asm</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.ow2.asm</groupId>
+                    <artifactId>asm-commons</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.eclipse.jetty.ee10</groupId>
+            <artifactId>jetty-ee10-apache-jsp</artifactId>
+            <scope>provided</scope>
+        </dependency>
         <dependency>
             <groupId>jakarta.servlet</groupId>
             <artifactId>jakarta.servlet-api</artifactId>
@@ -411,6 +463,25 @@
                 <configuration>
                     <failOnMissingWebXml>false</failOnMissingWebXml>
                 </configuration>
+            </plugin>
+
+            <!-- Repackages target/petclinic.war as an executable WAR (java -jar target/petclinic.war) -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <version>${spring-boot.version}</version>
+                <configuration>
+                    <mainClass>org.springframework.samples.petclinic.PetclinicInitializer</mainClass>
+                    <!-- Do not add spring-boot-jarmode-tools (layer extraction tooling) to WEB-INF/lib -->
+                    <includeTools>false</includeTools>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
 
             <plugin>
