@@ -371,8 +371,11 @@ plugin and the executable WAR come in the next milestone.
   differences are `slf4j-api` 2.0.18 and `logback-classic`/`logback-core` 1.5.34. No scope changed and no
   artifact was added or removed. `tomcat-jdbc`/`tomcat-juli` stay 9.0.46 (the Boot BOM's own Tomcat 10.1.55
   management does not reach them, because `tomcat-jdbc` is declared with an explicit version).
-- WAR inventory (63 jars in `WEB-INF/lib`, same count as baseline): only the three logging jars differ. The
+- WAR inventory (62 jar files in `WEB-INF/lib`, same count as baseline): only the three logging jars differ. The
   compile-scope JUnit/Mockito jars still ship (flag-only item, unchanged). No Boot jar ships.
+  *Count corrected on 2026-11-03:* this line first said 63 jars. That number counted the `WEB-INF/lib/` directory
+  entry of the archive listing. Baseline and foundation WARs both contain 62 jar files; the jar populations and the
+  three logging replacements were unaffected.
 - Effective POM outside `dependencyManagement`: only the new version properties and the two logging versions
   differ. No parent, plugin or profile change. The filtered `data-access.properties` is identical.
 - `./mvnw -DskipTests jetty:run-war -Djetty.http.port=8080` (jetty-ee10-maven-plugin 12.0.40) starts. Five smoke
