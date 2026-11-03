@@ -15,6 +15,11 @@
  */
 package org.springframework.samples.petclinic;
 
+import java.util.ArrayList;
+import java.util.List;
+
+import org.slf4j.LoggerFactory;
+import org.springframework.boot.SpringApplication;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.aop.AopAutoConfiguration;
@@ -45,9 +50,11 @@ import org.springframework.boot.autoconfigure.web.servlet.MultipartAutoConfigura
 import org.springframework.boot.autoconfigure.web.servlet.WebMvcAutoConfiguration;
 import org.springframework.boot.autoconfigure.web.servlet.error.ErrorMvcAutoConfiguration;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.context.logging.LoggingApplicationListener;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.boot.web.servlet.ServletRegistrationBean;
 import org.springframework.boot.web.servlet.support.SpringBootServletInitializer;
+import org.springframework.context.ApplicationListener;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ImportResource;
 import org.springframework.web.context.support.XmlWebApplicationContext;
@@ -122,6 +129,8 @@ public class PetclinicInitializer extends SpringBootServletInitializer {
 
     private static final String DISPATCHER_SERVLET_NAME = "dispatcher";
 
+    private static final String LOGBACK_LOGGER_CONTEXT = "ch.qos.logback.classic.LoggerContext";
+
     public PetclinicInitializer() {
         // Keep the container's own error handling in an external Servlet container, as before Spring Boot.
         setRegisterErrorPageFilter(false);
@@ -133,7 +142,17 @@ public class PetclinicInitializer extends SpringBootServletInitializer {
 
     @Override
     protected SpringApplicationBuilder configure(SpringApplicationBuilder builder) {
-        return configureApplication(builder);
+        configureApplication(builder);
+        if (!LOGBACK_LOGGER_CONTEXT.equals(LoggerFactory.getILoggerFactory().getClass().getName())) {
+            // The container loads SLF4J parent-first and has already bound it to its own provider (the Jetty Maven
+            // plugin with parentLoaderPriority binds it to the Maven logger). Spring Boot's Logback initialization
+            // refuses to start in that case, so logging stays with the container's provider, as before Spring Boot.
+            SpringApplication application = builder.application();
+            List<ApplicationListener<?>> listeners = new ArrayList<>(application.getListeners());
+            listeners.removeIf(LoggingApplicationListener.class::isInstance);
+            application.setListeners(listeners);
+        }
+        return builder;
     }
 
     private static SpringApplicationBuilder configureApplication(SpringApplicationBuilder builder) {
