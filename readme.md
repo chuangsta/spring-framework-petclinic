@@ -9,8 +9,12 @@ It allows the Spring community to maintain a Petclinic version with a plain old 
 and with a **3-layer architecture** (i.e. presentation --> service --> repository).
 The "canonical" implementation is now based on Spring Boot, Thymeleaf and [aggregate-oriented domain]([https://github.com/spring-projects/spring-petclinic/pull/200). 
 
-This version runs on Java 21 with Spring Framework 6.2, Spring Data JPA 3.5, Hibernate ORM 6.6 and Jakarta EE 10
-(Servlet 6.0, JSP/JSTL 3.0). It is packaged as a WAR and run locally with the Jetty 12 EE10 Maven plugin.
+This version runs on Java 21 with Spring Boot 3.5.16 (Spring Framework 6.2.19), Spring Data JPA 3.5, Hibernate ORM 6.6
+and Jakarta EE 10 (Servlet 6.0, JSP/JSTL 3.0). It is packaged as an executable WAR (`target/petclinic.war`) that starts
+an embedded Jetty 12.0.40 (EE10) server. Spring Boot only hosts the application: the existing XML configuration still
+defines the root application context (`business-config.xml`, `tools-config.xml`) and the Spring MVC child context
+(`mvc-core-config.xml`) of the single `DispatcherServlet`, and the views are still JSPs. The same WAR also runs
+under the Jetty 12 EE10 Maven plugin (`./mvnw jetty:run-war`).
 
 
 ## Understanding the Spring Petclinic application with a few diagrams
@@ -30,33 +34,56 @@ so JDK 21 or newer is required; JDK 8 can no longer build the project.
 A JDK 21 can live under `~/.m2/tools` without changing the machine default JDK. Only the JDK is needed
 on `PATH`; Maven comes from the wrapper (`./mvnw`).
 
-Select the JDK for the current shell only through `JAVA_HOME` and `PATH`. The JDK folder name and layout depend
-on the platform, so set `JAVA_HOME` to wherever your JDK 21 lives:
+Select the JDK only through `JAVA_HOME`. The JDK folder name and layout depend on the platform, so set
+`JAVA_HOME` to wherever your JDK 21 lives. The commands below were verified with Temurin 21.0.13+9 unpacked under
+`~/.m2/tools/jdk-21.0.13+9` on Linux. Put the `export` in the same command as `./mvnw` or `java`: exports
+do not carry over between separate non-interactive shell sessions, and `./mvnw` reports
+"JAVA_HOME is not defined correctly" when `JAVA_HOME` is unset or wrong.
 ```
 # Linux (Temurin tarball unpacked under ~/.m2/tools)
-export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9"
-# macOS (Temurin tarball unpacked under ~/.m2/tools; system installs use /Library/Java/JavaVirtualMachines/<jdk>/Contents/Home)
-# export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.12.1+1/Contents/Home"
-
-export PATH="$JAVA_HOME/bin:$PATH"
-java -version        # openjdk version "21.x"
-./mvnw --version     # Apache Maven 3.9.16, Java version: 21.x
+export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9" && ./mvnw --version   # Apache Maven 3.9.16, Java version: 21.0.13
+# macOS (Temurin tarball under ~/.m2/tools; system installs use /Library/Java/JavaVirtualMachines/<jdk>/Contents/Home)
+# export JAVA_HOME="$HOME/.m2/tools/<jdk-21-folder>/Contents/Home" && ./mvnw --version
 ```
 
-Run the tests and build the WAR:
+Run the tests and build the executable WAR:
 ```
-./mvnw clean test              # expect: Tests run: 102, Failures: 0, Errors: 0, Skipped: 0
-./mvnw -DskipTests package     # target/petclinic.war
+export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9" && ./mvnw clean test            # expect: Tests run: 102, Failures: 0, Errors: 0, Skipped: 0
+export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9" && ./mvnw -DskipTests package   # executable target/petclinic.war
 ```
 
-### With Maven command line
+### Run the executable WAR
 ```
 git clone https://github.com/spring-petclinic/spring-framework-petclinic.git
 cd spring-framework-petclinic
-./mvnw jetty:run-war
-# For Windows : ./mvnw.cmd jetty:run-war
+export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9" && ./mvnw -DskipTests package
+export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9" && "$JAVA_HOME/bin/java" -jar target/petclinic.war --server.address=localhost --server.port=8080
+# For Windows : set JAVA_HOME to your JDK 21, then mvnw.cmd -DskipTests package and "%JAVA_HOME%\bin\java" -jar target\petclinic.war
 ```
-Run these commands with `JAVA_HOME` pointing at JDK 21, as shown above.
+The WAR does not depend on the source folder and can be started from any directory by passing its path. Stop it
+with Ctrl-C. `--server.address=localhost` keeps the listener on the loopback interface; without it Spring Boot
+listens on all interfaces. The application logs to the console through the unchanged `logback.xml`.
+
+Startup also prints some non-fatal noise that is not an application error: Logback status lines (for example
+`WARN ... Missing watchable .xml or .properties files`), a Jetty `WARN` that the WAR base resource "is aliased",
+and `DigesterFactory` schema warnings.
+
+### With the Jetty Maven plugin (compatibility path)
+```
+export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9" && ./mvnw -DskipTests jetty:run-war
+# For Windows : set JAVA_HOME to your JDK 21, then mvnw.cmd -DskipTests jetty:run-war
+```
+The `jetty-ee10-maven-plugin` 12.0.40 deploys the same WAR into its own Jetty as a traditional WAR, through
+`PetclinicInitializer` (a `SpringBootServletInitializer`). The embedded Jetty jars in `WEB-INF/lib-provided` are
+not used there, and logging goes through the Maven logger, as it did before Spring Boot. The plugin listens on all
+interfaces; use `http://localhost:8080` in the browser.
+
+### Known baseline behavior
+- `/owners/{ownerId}/pets/{petId}/visits` returns HTTP 404 because the `visitList.jsp` view does not exist. This
+  is unchanged from before the migration and is kept on purpose.
+- Every page logs one browser page error,
+  `Bootstrap's JavaScript requires jQuery version 1.9.1 or higher, but lower than version 3`, because the pinned
+  Bootstrap 3.3.6 webjar is used with the pinned jQuery 3.5.1 webjar. It is the only expected browser error.
 
 ### With Docker
 ```
@@ -78,11 +105,17 @@ In its default configuration, Petclinic uses an in-memory database (H2) which ge
 
 A similar setups is provided for MySQL and PostgreSQL in case a persistent database configuration is needed.
 To run petclinic locally using persistent database, it is needed to run with profile defined in main pom.xml file.
+The Maven profile selects the JDBC driver and filters the connection settings into `data-access.properties` at build
+time, so build the WAR with the profile and then run it as usual. Only the default H2 profile was run during the
+Spring Boot migration; the dependency lists of all four database profiles were checked.
 
 For MySQL database, it is needed to run with 'MySQL' profile defined in main pom.xml file.
 
 ```
-./mvnw jetty:run-war -P MySQL
+export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9" && ./mvnw -P MySQL -DskipTests package
+export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9" && "$JAVA_HOME/bin/java" -jar target/petclinic.war --server.address=localhost
+# or, with the Jetty Maven plugin:
+export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9" && ./mvnw -P MySQL -DskipTests jetty:run-war
 ```
 
 Before do this, would be good to check properties defined in MySQL profile inside pom.xml file.
@@ -106,7 +139,10 @@ docker run -e MYSQL_USER=petclinic -e MYSQL_PASSWORD=petclinic -e MYSQL_ROOT_PAS
 For PostgreSQL database, it is needed to run with 'PostgreSQL' profile defined in main pom.xml file.
 
 ```
-./mvnw jetty:run-war -P PostgreSQL
+export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9" && ./mvnw -P PostgreSQL -DskipTests package
+export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9" && "$JAVA_HOME/bin/java" -jar target/petclinic.war --server.address=localhost
+# or, with the Jetty Maven plugin:
+export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9" && ./mvnw -P PostgreSQL -DskipTests jetty:run-war
 ```
 
 Before do this, would be good to check properties defined in PostgreSQL profile inside pom.xml file.
@@ -129,11 +165,21 @@ docker run --name postgres-petclinic -e POSTGRES_PASSWORD=petclinic -e POSTGRES_
 ## Persistence layer choice
 
 The persistence layer have 3 available implementations: JPA (default), JDBC and Spring Data JPA.
-The default JPA implementation could be changed by using a Spring profile: `jdbc`, `spring-data-jpa` and `jpa`.  
-As an example, you may use the `-Dspring.profiles.active=jdbc` VM options to start the application with the JDBC implementation.
+The default JPA implementation could be changed by using a Spring profile: `jdbc`, `spring-data-jpa` and `jpa`.
+`PetclinicInitializer` sets `jpa` as the default profile only, so an explicitly active profile always wins. Only one
+implementation is active at a time.
+
+With the executable WAR, pass the profile as an argument (or as the `-Dspring.profiles.active=jdbc` VM option):
 
 ```
-./mvnw jetty:run-war -Dspring.profiles.active=jdbc
+export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9" && "$JAVA_HOME/bin/java" -jar target/petclinic.war --server.address=localhost --spring.profiles.active=jdbc
+export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9" && "$JAVA_HOME/bin/java" -jar target/petclinic.war --server.address=localhost --spring.profiles.active=spring-data-jpa
+```
+
+With the Jetty Maven plugin:
+
+```
+export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9" && ./mvnw -DskipTests jetty:run-war -Dspring.profiles.active=jdbc
 ```
 
 
@@ -145,7 +191,8 @@ The following items should be installed in your system:
 * Maven 3.9+ (http://maven.apache.org/install.html), or the bundled `./mvnw` wrapper (Maven 3.9.16)
 * git command line tool (https://help.github.com/articles/set-up-git)
 * Optional: a Jakarta EE 10 (Servlet 6.0) web container such as Jetty 12 (EE10) or Tomcat 10.1, if you prefer
-  deploying the WAR from your IDE instead of running `./mvnw jetty:run-war`
+  deploying the WAR from your IDE instead of running the executable WAR or `./mvnw jetty:run-war`. Only the Jetty
+  Maven plugin deployment was verified during the Spring Boot migration.
 * Your prefered IDE 
   * Eclipse with the m2e plugin. Note: when m2e is available, there is an m2 icon in Help -> About dialog. If m2e is not there, just follow the install process here: http://www.eclipse.org/m2e/
   * [Spring Tools Suite](https://spring.io/tools) (STS)
@@ -164,8 +211,10 @@ git clone https://github.com/spring-petclinic/spring-framework-petclinic.git
 File -> Import -> Maven -> Existing Maven project
 ```
 Then either build on the command line `./mvnw generate-resources` or using the Eclipse launcher (right click on project and `Run As -> Maven install`) to generate the CSS.
-Run `./mvnw jetty:run-war` from the command line, or configure a Jakarta EE 10 web container (Jetty 12 EE10 or
-Tomcat 10.1) and deploy the `petclinic.war` file.
+Build and run the executable WAR from the command line (see above), run `./mvnw jetty:run-war`, or configure a
+Jakarta EE 10 web container (Jetty 12 EE10 or Tomcat 10.1) and deploy the `petclinic.war` file.
+`PetclinicInitializer` is the main class of the executable WAR. Starting it directly from the IDE classpath was not
+verified (the generated CSS is only in `target`, and embedded Jetty is a `provided` dependency); use the packaged WAR.
 
 3) Inside IntelliJ IDEA
 
@@ -174,8 +223,9 @@ In the main menu, select `File > Open` and select the Petclinic [pom.xml](pom.
 CSS files are generated from the Maven build. You can either build them on the command line `./mvnw generate-resources` 
 or right click on the `spring-petclinic` project then `Maven -> Generates sources and Update Folders`.
 
-Set the project SDK to JDK 21. Then either run the `jetty:run-war` Maven goal, or go to `Run -> Edit Configuration`,
-configure a Jakarta EE 10 web container (Jetty 12 EE10 or Tomcat 10.1), and deploy the `petclinic.war` file.
+Set the project SDK to JDK 21. Then either run the `package` goal and start `target/petclinic.war` with
+`java -jar`, run the `jetty:run-war` Maven goal, or go to `Run -> Edit Configuration`, configure a Jakarta EE 10
+web container (Jetty 12 EE10 or Tomcat 10.1), and deploy the `petclinic.war` file.
 Run the application by clicking on the `Run` icon.
 
 
@@ -192,6 +242,7 @@ Visit [http://localhost:8080](http://localhost:8080) in your browser.
 
 | Inside the 'Web' layer | Files |
 |------------------------|-------|
+| Spring Boot startup, root and MVC child contexts | [PetclinicInitializer.java](src/main/java/org/springframework/samples/petclinic/PetclinicInitializer.java) |
 | Spring MVC - XML integration | [mvc-view-config.xml](src/main/resources/spring/mvc-view-config.xml)  |
 | Spring MVC - ContentNegotiatingViewResolver| [mvc-view-config.xml](src/main/resources/spring/mvc-view-config.xml) |
 | JSP custom tags | [WEB-INF/tags](src/main/webapp/WEB-INF/tags), [createOrUpdateOwnerForm.jsp](src/main/webapp/WEB-INF/jsp/owners/createOrUpdateOwnerForm.jsp)|
@@ -220,11 +271,12 @@ The [pom.xml](pom.xml) has been configured to publish the image with a the `spri
 Jib containerizes this WAR project by using the [distroless Jetty](https://github.com/GoogleContainerTools/distroless/tree/master/java/jetty) as a base image.
 
 Note: the Jib configuration has not been updated for this migration. Its default base image predates Jakarta EE 10,
-so it may not run this WAR. This is listed for review in the dependency risk review; verify the image before publishing.
+so it may not run this WAR, and it was not tried with the Spring Boot executable WAR either. This is listed for review
+in the dependency risk review; verify the image before publishing.
 
 Build and push the container image of Petclinic to the Docker Hub registry:
 ```
-./mvnw jib:build
+export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9" && ./mvnw jib:build
 ```
 
 

@@ -8,11 +8,17 @@ instead of working around it.
 
 ## What this codebase is
 
-Spring Framework Petclinic: Spring MVC 6.2.19 on Java 21, Jakarta EE 10 namespaces, JSP
-views, three persistence profiles (JDBC / JPA / Spring Data JPA) with H2 in memory by
-default, WAR packaging, run with the Jetty EE10 Maven plugin. The migration history is in
-`MIGRATION_NOTES.md` (Milestones 1–4); the dependency risk register is in
-`DEPENDENCY_RISK_REVIEW.md`. Read both before proposing structural changes.
+Spring Framework Petclinic: Spring Boot 3.5.16 hosting Spring Framework / Spring MVC 6.2.19 on
+Java 21, Jakarta EE 10 namespaces, JSP views, three persistence profiles (JPA default / JDBC /
+Spring Data JPA) with H2 in memory by default. It is packaged as an executable WAR
+(`target/petclinic.war`) on embedded Jetty 12.0.40 EE10; the Jetty EE10 Maven plugin 12.0.40 still
+runs the same WAR as a compatibility path. `PetclinicInitializer` (a `SpringBootServletInitializer`)
+is the only initializer: the Boot root context imports `business-config.xml` and
+`tools-config.xml`, and one `DispatcherServlet` on `/` owns a child context loaded from
+`mvc-core-config.xml`. XML stays authoritative; overlapping Boot auto-configurations are excluded.
+Logging is SLF4J 2.0.18 / Logback 1.5.34 (the one user-approved pin exception) with the unchanged
+`logback.xml`. The migration history is in `MIGRATION_NOTES.md` (Milestones 1–6); the dependency
+risk register is in `DEPENDENCY_RISK_REVIEW.md`. Read both before proposing structural changes.
 
 Branch topology:
 
@@ -25,23 +31,28 @@ Branch topology:
 ## Build and test (exact commands, verified)
 
 Requires JDK 21 only. Maven comes from the wrapper, so use `./mvnw` from the repo root. Point
-`JAVA_HOME` at your JDK 21 (the folder name depends on the machine; check `ls ~/.m2/tools`):
+`JAVA_HOME` at your JDK 21 (the folder name depends on the machine; check `ls ~/.m2/tools`) in the
+same command as `./mvnw` or `java`:
 
 ```sh
 # Linux, Temurin unpacked under ~/.m2/tools (adjust the version folder to match what you installed)
-export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9"
 # macOS: the JDK sits under .../<jdk-folder>/Contents/Home, e.g. "$HOME/.m2/tools/jdk-21.0.12.1+1/Contents/Home"
-export PATH="$JAVA_HOME/bin:$PATH"
-java -version                       # must report 21.x
+export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9" && "$JAVA_HOME/bin/java" -version   # must report 21.x
 
-./mvnw clean test                   # expect: Tests run: 102, Failures: 0, Errors: 0, Skipped: 0
-./mvnw -DskipTests jetty:run-war    # app on http://localhost:8080 (stop with Ctrl-C)
-./mvnw -DskipTests package          # target/petclinic.war
+export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9" && ./mvnw clean test                # expect: Tests run: 102, Failures: 0, Errors: 0, Skipped: 0
+export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9" && ./mvnw -DskipTests package      # executable target/petclinic.war
+
+# Primary runtime: the executable WAR (stop with Ctrl-C; from another directory, pass the WAR's full path)
+export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9" && "$JAVA_HOME/bin/java" -jar target/petclinic.war --server.address=localhost --server.port=8080
+#   add --spring.profiles.active=jdbc or --spring.profiles.active=spring-data-jpa; the default profile is jpa
+
+# Compatibility path: the same WAR under the Jetty EE10 Maven plugin, app on http://localhost:8080
+export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9" && ./mvnw -DskipTests jetty:run-war
 ```
 
 If `./mvnw` reports "JAVA_HOME is not defined correctly", `JAVA_HOME` is unset or points at the wrong
 folder. Fix that first; do not treat it as a test failure. In a non-interactive shell, run the `export`
-lines in the same command as `./mvnw`, because exports do not carry over between separate shell sessions.
+in the same command as `./mvnw`, because exports do not carry over between separate shell sessions.
 
 Smoke checks against the running app (H2 seeded data):
 
@@ -50,6 +61,7 @@ curl -s http://localhost:8080/                        # Welcome page
 curl -s "http://localhost:8080/owners?lastName=Davis" # Betty Davis + Harold Davis
 curl -s http://localhost:8080/owners/2               # Betty Davis, pet Basil (hamster)
 curl -s http://localhost:8080/vets.xml; curl -s http://localhost:8080/vets.json
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8080/owners/2/pets/2/visits   # 404, see below
 ```
 
 ## The behavior contract
@@ -95,9 +107,20 @@ Spring 6.2 migration:
 Any other console or page error, or any request to a host other than `localhost`, is a
 regression. Webjars (Bootstrap 3.3.6, jQuery 3.5.1, jQuery UI 1.12.1) are pinned as-is.
 
+## Approved baseline behavior: the visit-list 404
+
+`GET /owners/{ownerId}/pets/{petId}/visits` returns HTTP 404 because the handler returns the view
+`visitList` and `visitList.jsp` does not exist. This is baseline behavior, preserved on purpose with
+user approval. Check it over HTTP; do not add the JSP or describe the route as rendering.
+
+Server-side startup noise (Logback status lines, the Jetty "aliased" base-resource WARN,
+`DigesterFactory` schema WARNs) is not a browser error and is not in scope for cleanup.
+
 ## Flag-only items (report, do not fix)
 
 Known, documented, and intentionally not changed here: cross-owner pet edit; no
 authentication/authorization; raw exception page in `exception.jsp`; demo credentials and
 PII-like seed data; debug and SQL logging; no audit trail; compile-scope test jars shipping
-in the WAR; the stale Jib base image. Full register: `DEPENDENCY_RISK_REVIEW.md`.
+in the WAR; the stale Jib base image; the ended OSS support of Spring Boot 3.5 / Spring
+Framework 6.2 (lifecycle only, not production risk acceptance). The SLF4J/Logback upgrade was a
+compatibility exception and does not change log levels. Full register: `DEPENDENCY_RISK_REVIEW.md`.
