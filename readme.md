@@ -224,7 +224,7 @@ so it may not run this WAR. This is listed for review in the dependency risk rev
 
 Build and push the container image of Petclinic to the Docker Hub registry:
 ```
-mvn jib:build
+./mvnw jib:build
 ```
 
 
