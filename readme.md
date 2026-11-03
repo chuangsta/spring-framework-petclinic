@@ -27,23 +27,26 @@ Maven 3.9.16 on first use.
 The compiler targets Java 21 (`maven.compiler.release` = `21`) on Spring Framework 6.2 and Jakarta EE 10,
 so JDK 21 or newer is required; JDK 8 can no longer build the project.
 
-A prebuilt local toolchain can live under `~/.m2/tools` without changing the machine default JDK:
+A JDK 21 can live under `~/.m2/tools` without changing the machine default JDK. Only the JDK is needed
+on `PATH`; Maven comes from the wrapper (`./mvnw`).
 
-* JDK 21 (Temurin 21.0.12.1+1): `~/.m2/tools/jdk-21.0.12.1+1/Contents/Home`
-* Maven 3.9.16: `~/.m2/tools/apache-maven-3.9.16`
-
-Select them for the current shell only through `JAVA_HOME` and `PATH`:
+Select the JDK for the current shell only through `JAVA_HOME` and `PATH`. The JDK folder name and layout depend
+on the platform, so set `JAVA_HOME` to wherever your JDK 21 lives:
 ```
-export JAVA_HOME=~/.m2/tools/jdk-21.0.12.1+1/Contents/Home
-export PATH=~/.m2/tools/apache-maven-3.9.16/bin:$PATH
-java -version   # 21.0.12.1
-mvn --version   # Apache Maven 3.9.16, Java version: 21.0.12.1
+# Linux (Temurin tarball unpacked under ~/.m2/tools)
+export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9"
+# macOS (Temurin tarball unpacked under ~/.m2/tools; system installs use /Library/Java/JavaVirtualMachines/<jdk>/Contents/Home)
+# export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.12.1+1/Contents/Home"
+
+export PATH="$JAVA_HOME/bin:$PATH"
+java -version        # openjdk version "21.x"
+./mvnw --version     # Apache Maven 3.9.16, Java version: 21.x
 ```
 
 Run the tests and build the WAR:
 ```
-mvn test
-mvn -DskipTests package
+./mvnw clean test              # expect: Tests run: 102, Failures: 0, Errors: 0, Skipped: 0
+./mvnw -DskipTests package     # target/petclinic.war
 ```
 
 ### With Maven command line
