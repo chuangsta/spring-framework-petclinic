@@ -544,6 +544,8 @@ not fixed:
 
 ### How a reviewer verifies
 
+Run these from the root of a checkout of `migration/boot-runtime`. Only one server runs on port 8080 at a time.
+
 ```sh
 export JAVA_HOME=/home/factory-user/.m2/tools/jdk-21.0.13+9 && ./mvnw clean test   # 102, 0 failures/errors/skips
 export JAVA_HOME=/home/factory-user/.m2/tools/jdk-21.0.13+9 && ./mvnw -DskipTests package
@@ -552,9 +554,12 @@ unzip -p target/petclinic.war META-INF/MANIFEST.MF          # WarLauncher, Start
 unzip -Z1 target/petclinic.war | grep -cE '^WEB-INF/lib/.+\.jar$'            # 68
 unzip -Z1 target/petclinic.war | grep -cE '^WEB-INF/lib-provided/.+\.jar$'   # 39
 unzip -Z1 target/petclinic.war | grep -E 'tomcat-embed-el|expressly'          # no output
-cd /tmp && /home/factory-user/.m2/tools/jdk-21.0.13+9/bin/java -jar /path/to/repo/target/petclinic.war --server.address=localhost
-#   in another shell: the five AGENTS.md smoke checks, then /owners/2/pets/2/visits (404)
-#   repeat with --spring.profiles.active=jdbc and --spring.profiles.active=spring-data-jpa
+(cd /tmp && /home/factory-user/.m2/tools/jdk-21.0.13+9/bin/java -jar /path/to/repo/target/petclinic.war --server.address=localhost)
+#   /path/to/repo is the absolute path of this checkout. The subshell starts the WAR from /tmp, outside the source
+#   tree; this shell stays in the repository root.
+#   in another shell: the five AGENTS.md smoke checks, then /owners/2/pets/2/visits (404); then stop the WAR with Ctrl-C
+#   repeat with --spring.profiles.active=jdbc and --spring.profiles.active=spring-data-jpa, stopping each run
+#   after the last WAR run is stopped (port 8080 free), still in the repository root:
 export JAVA_HOME=/home/factory-user/.m2/tools/jdk-21.0.13+9 && ./mvnw -DskipTests jetty:run-war -Djetty.http.port=8080
 ```
 

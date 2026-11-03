@@ -23,6 +23,11 @@ under the Jetty 12 EE10 Maven plugin (`./mvnw jetty:run-war`).
 
 ## Running petclinic locally
 
+The commands in this section assume an existing checkout of this repository that already contains the Spring Boot
+3.5.16 migration described above. Run them from the root folder of that checkout (the folder with `pom.xml` and
+`mvnw`). The upstream [spring-petclinic/spring-framework-petclinic](https://github.com/spring-petclinic/spring-framework-petclinic)
+repository does not contain this migration, so a fresh clone of it does not build the executable WAR described here.
+
 ### Build toolchain: JDK 21 and Maven 3.9
 
 The project builds and tests with JDK 21 and Maven 3.9.16. The Maven wrapper (`./mvnw`) downloads
@@ -53,9 +58,8 @@ export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9" && ./mvnw -DskipTests package  
 ```
 
 ### Run the executable WAR
+From the root of the checkout:
 ```
-git clone https://github.com/spring-petclinic/spring-framework-petclinic.git
-cd spring-framework-petclinic
 export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9" && ./mvnw -DskipTests package
 export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9" && "$JAVA_HOME/bin/java" -jar target/petclinic.war --server.address=localhost --server.port=8080
 # For Windows : set JAVA_HOME to your JDK 21, then mvnw.cmd -DskipTests package and "%JAVA_HOME%\bin\java" -jar target\petclinic.war
@@ -201,10 +205,8 @@ The following items should be installed in your system:
 
 ### Steps:
 
-1) On the command line
-```
-git clone https://github.com/spring-petclinic/spring-framework-petclinic.git
-```
+1) Use the existing checkout that contains this migration (see [Running petclinic locally](#running-petclinic-locally));
+a fresh clone of the upstream repository does not contain it.
 
 2) Inside Eclipse or STS
 ```
