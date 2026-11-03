@@ -417,3 +417,145 @@ curl -s "http://localhost:8080/owners?lastName=Davis"       # in another shell: 
 ```
 
 Adjust `JAVA_HOME` to your own JDK 21 folder; see `AGENTS.md`.
+
+## Milestone 6 — Spring Boot 3.5.16 executable WAR on embedded Jetty 12.0.40 (Boot runtime)
+
+Recorded 2026-11-03 on branch `migration/boot-runtime`, which descends from the Boot foundation head `979c388`
+(Milestone 5). This is the second of two Boot 3 milestones. The application now starts as a Spring Boot executable
+WAR. Its XML configuration, JSP views, services, repositories, domain model and tests are unchanged.
+
+### What changed
+
+`pom.xml` and `PetclinicInitializer.java` only (commits `f953200`, `c8f740d`). No other Java, XML, JSP, resource,
+test or workflow file changed.
+
+- **One initializer for both runtimes.** `PetclinicInitializer` now extends `SpringBootServletInitializer` and has
+  a `main` method. It replaces the old `AbstractDispatcherServletInitializer`, so neither `java -jar` nor an
+  external container registers a second root context, dispatcher or filter. The ErrorPageFilter is disabled, so an
+  external container keeps its own error handling.
+- **Root and child contexts kept.** The root context is the Boot context. It imports only
+  `classpath:spring/business-config.xml` and `classpath:spring/tools-config.xml` (no component scan). One
+  `DispatcherServlet` named `dispatcher`, mapped to `/` (load-on-startup 1, async supported), owns a child
+  `XmlWebApplicationContext` loaded from `classpath:spring/mvc-core-config.xml`.
+- **Encoding and static resources.** `CharacterEncodingFilter` (UTF-8, `forceEncoding=true`) is mapped to the
+  `dispatcher` servlet for REQUEST, FORWARD, INCLUDE and ASYNC, as before. `server.servlet.register-default-servlet=true`
+  registers the container's default servlet, which `<mvc:default-servlet-handler/>` forwards to. Without it, startup
+  fails with "Unable to locate the default servlet".
+- **Persistence choice.** `spring.profiles.default=jpa`: JPA stays the default, and `--spring.profiles.active=jdbc`
+  or `spring-data-jpa` (or `-Dspring.profiles.active=...`) still selects the other implementation. The XML still owns
+  the `tomcat-jdbc` data source, schema/data scripts, JPA setup and transactions.
+- **XML stays authoritative.** 27 Boot auto-configurations that would define something the XML already owns are
+  excluded: data source and SQL initialization, JDBC template/client, Hibernate JPA, JPA repositories, transactions
+  (including JTA and transaction-manager customization), persistence exception translation, AOP, cache, JMX,
+  validation, message source, property placeholder, task execution/scheduling, Jackson and HTTP message converters,
+  Web MVC, dispatcher servlet, HTTP encoding, multipart, error MVC and Spring Data web. The embedded web server
+  auto-configuration is kept. Bean overriding is not enabled.
+- **Logging.** The executable WAR uses standard Spring Boot logging with the unchanged `logback.xml`. Under an external
+  container that has already bound SLF4J to another provider, Boot's `LoggingApplicationListener` is removed (commit
+  `c8f740d`). This is the case for `./mvnw jetty:run-war`: `WEB-INF/jetty-web.xml` keeps
+  `parentLoaderPriority=true`, so the plugin's SLF4J (bound to the Maven logger) wins, as it did before Spring Boot.
+  Without this, the webapp failed with HTTP 503 ("LoggerFactory is not a Logback LoggerContext").
+- **Packaging.** `spring-boot-maven-plugin` 3.5.16 `repackage` (`includeTools=false`) turns `target/petclinic.war`
+  into an executable WAR (`Main-Class: org.springframework.boot.loader.launch.WarLauncher`,
+  `Start-Class: org.springframework.samples.petclinic.PetclinicInitializer`). WAR packaging stays because the views are
+  JSPs. `WEB-INF/lib` holds 68 jar files (the foundation's 62 plus 6 Boot jars). `WEB-INF/lib-provided` holds 39 jar
+  files: embedded Jetty, JSP/EL and the container APIs, used by `java -jar` and ignored by an external container.
+  The existing `jetty-ee10-maven-plugin` 12.0.40 is unchanged.
+
+New dependencies and their scope (no existing coordinate changed version or scope):
+
+| Declared in `pom.xml` | Scope | Brings in (new in the resolved graph) | Reason |
+| --- | --- | --- | --- |
+| `spring-boot-starter` 3.5.16 | compile | `spring-boot`, `spring-boot-autoconfigure`, `spring-boot-starter-logging` 3.5.16; `jul-to-slf4j` 2.0.18; `log4j-to-slf4j`, `log4j-api` 2.24.3; `snakeyaml` 2.4 | Boot runtime and `SpringBootServletInitializer`. The logging bridges are Boot's standard logging starter and route JUL and Log4j API calls to the approved SLF4J 2.0.18. `spring-boot-starter-web` is not used, to avoid adding Jackson modules to the JSON converter. |
+| `spring-boot-starter-jetty` 3.5.16, excluding `tomcat-embed-el`, `asm`, `asm-commons` | provided | Jetty 12.0.40 server, EE10 servlet/webapp/annotations/plus/servlets and WebSocket modules; `jakarta.websocket-api`/`-client-api` 2.1.1; `jakarta.enterprise.cdi-api` 4.0.1, `jakarta.enterprise.lang-model` 4.0.1, `jakarta.interceptor-api` 2.1.0 | Embedded Jetty EE10 for the executable WAR. `tomcat-embed-el` is excluded so that only one EL implementation exists. ASM is excluded so `org.ow2.asm:asm` stays test-only at the pinned 9.1 (embedded Boot does not run Jetty annotation scanning). |
+| `jetty-ee10-apache-jsp` 12.0.40 | provided | `mortbay-apache-jsp`, `mortbay-apache-el` 10.1.56; `ecj` 3.33.0; `jakarta.servlet.jsp-api` 3.1.1 | JSP compilation and the single EL implementation for the embedded container. |
+| `jetty-bom`, `jetty-ee10-bom` 12.0.40 (imported before the Boot BOM) | import | none | Keep every Jetty 12 artifact at 12.0.40, the same release as the Maven plugin, instead of Boot's managed Jetty. |
+| `spring-boot-maven-plugin` 3.5.16 | build plugin | none | Executable WAR repackaging. |
+
+`logback-classic`/`logback-core` 1.5.34 and `slf4j-api` 2.0.18 are the approved Milestone 5 versions and did not move.
+`jakarta.annotation-api` stays at the pinned 2.0.0, and `tomcat-jdbc`/`tomcat-juli` stay at 9.0.46.
+
+### Results (JDK Temurin 21.0.13+9, Maven wrapper 3.9.16, sources at `c8f740d`)
+
+- `./mvnw clean test` → `Tests run: 102, Failures: 0, Errors: 0, Skipped: 0`, BUILD SUCCESS. Each persistence service
+  test class runs 13 tests. `git diff 979c388 -- src/test` is empty.
+- `./mvnw -DskipTests package` → BUILD SUCCESS with `spring-boot:3.5.16:repackage`.
+- `./mvnw dependency:list` for `-PH2`, `-PHSQLDB`, `-PMySQL` and `-PPostgreSQL`, compared with the foundation lists:
+  only the additions in the table above. No `tomcat-embed-el`, no runtime `expressly`, no second SLF4J provider.
+- WAR contents: JSP, tag, static, message, Spring XML and database script files are the same set as in the foundation
+  WAR. The generated `resources/css/petclinic.css` is present. `logback.xml` is byte-identical (sha256
+  `50edb985…68ae4`), and the filtered `data-access.properties` is identical.
+- Context wiring (startup diagnostics): one Boot root context with the two imported XML files, one child
+  `XmlWebApplicationContext` for `dispatcher`, the encoding filter on `dispatcher` only. The only positive
+  auto-configurations are the embedded Jetty server and its supporting infrastructure (WebSocket, HTTP client, REST
+  client, SSL, lifecycle, availability).
+- Executable WAR started from `/tmp` (`java -jar <repo>/target/petclinic.war --server.address=localhost`), one
+  profile at a time: default `jpa`, `jdbc` and `spring-data-jpa` each returned 200 for `/` (Welcome),
+  `/owners?lastName=Davis` (Betty Davis, Harold Davis), `/owners/2` (Betty Davis, Basil, hamster), `/vets.xml` and
+  `/vets.json` (six vets each). One `dispatcher` initialization and no ERROR lines in each log.
+- `./mvnw -DskipTests jetty:run-war -Djetty.http.port=8080` (compatibility path): "Started PetclinicInitializer",
+  the same five checks 200, `/oups` 200, `petclinic.css` 200 `text/css`, `/owners/2/pets/2/visits` 404.
+- Browser (agent-browser, default `jpa`, fresh WAR start): 38 steps through home, owner search (blank, not found,
+  single result, several results), owner details, owner create/edit with validation, pet create/edit with
+  `yyyy/MM/dd` and rejected ISO dates, duplicate pet name, visit create with blank/ISO/valid dates, veterinarians,
+  `/oups`, and a final reload that shows the created owner, edited pet and both visits. 550 requests, all to
+  `localhost`. Zero console messages. 43 page errors, every one the approved
+  `Bootstrap's JavaScript requires jQuery version 1.9.1 or higher, but lower than version 3`. Validation messages
+  (`must not be empty`, `is required`, `invalid date`, `is already in use`, the `@Digits` message) are unchanged.
+  The datepicker writes `yyyy/MM/dd`. The visit-list route returned 404 over HTTP.
+
+### Pre-existing behavior seen during validation (not migration regressions)
+
+These come from unchanged application code and were reproduced on the foundation branch as well. They are documented,
+not fixed:
+
+- **Blank owner Telephone message.** A blank telephone violates both `@NotEmpty` and `@Digits`, and
+  `inputField.tag` shows only the first violation, whose order varies per request. Over 20 blank submissions,
+  `must not be empty` came first 10 times on the Boot WAR and 14 times on the foundation under the Jetty plugin; the
+  other times the `@Digits` message (`numeric value out of bounds ...`) came first. Both are original messages. The
+  other four fields always show `must not be empty`.
+- **Captions after an invalid owner edit.** The re-rendered form shows "New Owner" / "Add Owner", because
+  `OwnerController` sets the owner id only after validation. The form still posts to `/owners/{ownerId}/edit`, and the
+  saved owner is unchanged.
+- **Server-side startup noise.** The executable WAR prints Logback status lines (including
+  `WARN ... Missing watchable .xml or .properties files`), a Jetty WARN that the WAR base resource "is aliased", and
+  `DigesterFactory` schema WARNs. The Jetty plugin path keeps its existing WARN noise. None of this is a browser
+  console or page error, and the application starts and serves normally.
+- **Visit-list 404** and the **approved Bootstrap/jQuery page error**: unchanged, see the Milestone 3 and 5 risks.
+
+### Risks
+
+- Spring Boot 3.5 OSS support ended on 2026-06-30, so Boot 3.5.16 gets no further OSS releases. This is a flag-only
+  lifecycle risk. It is not production risk acceptance and does not imply commercial support. The Spring Framework 6.2
+  lifecycle item in `DEPENDENCY_RISK_REVIEW.md` is unchanged.
+- The shipped surface grows: six new jars in `WEB-INF/lib` and 39 jars (embedded Jetty, Mortbay JSP/EL, ECJ, container
+  APIs) in `WEB-INF/lib-provided` that run whenever the WAR is started with `java -jar`. None of them was part of the
+  2026-10-16 advisory lookup. A fresh lookup is needed before any sign-off.
+- Spring Boot binds to all interfaces unless `--server.address=localhost` (or another address) is passed. The Jetty
+  plugin also binds to all interfaces, as before.
+- Auto-configuration is now active. A dependency added later can activate another Boot auto-configuration; check the
+  exclusion list in `PetclinicInitializer` against the XML when adding one.
+- Under the Jetty plugin, logging still goes through the Maven logger, not `logback.xml` (unchanged from before Boot).
+- Unchanged and still flag-only: cross-owner pet edit, no authentication/authorization, raw exception page, demo
+  credentials and synthetic PII-like seed data, debug/SQL logging (`logback.xml` debug level and
+  `jpa.showSql=true` unchanged), no audit trail, compile-scope test jars in the WAR, stale Jib base image (not tried
+  with the executable WAR). Date binding (`yyyy/MM/dd` only), telephone `@Digits` semantics, posted hidden pet `id`
+  binding and the visit model attribute are pinned by the unchanged 102-test suite.
+
+### How a reviewer verifies
+
+```sh
+export JAVA_HOME=/home/factory-user/.m2/tools/jdk-21.0.13+9 && ./mvnw clean test   # 102, 0 failures/errors/skips
+export JAVA_HOME=/home/factory-user/.m2/tools/jdk-21.0.13+9 && ./mvnw -DskipTests package
+git diff 979c388 --stat -- src .github                      # PetclinicInitializer.java only
+unzip -p target/petclinic.war META-INF/MANIFEST.MF          # WarLauncher, Start-Class PetclinicInitializer
+unzip -Z1 target/petclinic.war | grep -cE '^WEB-INF/lib/.+\.jar$'            # 68
+unzip -Z1 target/petclinic.war | grep -cE '^WEB-INF/lib-provided/.+\.jar$'   # 39
+unzip -Z1 target/petclinic.war | grep -E 'tomcat-embed-el|expressly'          # no output
+cd /tmp && /home/factory-user/.m2/tools/jdk-21.0.13+9/bin/java -jar /path/to/repo/target/petclinic.war --server.address=localhost
+#   in another shell: the five AGENTS.md smoke checks, then /owners/2/pets/2/visits (404)
+#   repeat with --spring.profiles.active=jdbc and --spring.profiles.active=spring-data-jpa
+export JAVA_HOME=/home/factory-user/.m2/tools/jdk-21.0.13+9 && ./mvnw -DskipTests jetty:run-war -Djetty.http.port=8080
+```
+
+Adjust `JAVA_HOME` to your own JDK 21 folder; see `AGENTS.md`.

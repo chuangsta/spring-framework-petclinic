@@ -31,6 +31,40 @@ this register:
   acceptance and does not imply commercial support.
 - All other register items (1–4, 6–11) are unchanged and still flag-only.
 
+## Update 2026-11-03: Boot runtime (`migration/boot-runtime`)
+
+The application now runs as a Spring Boot 3.5.16 executable WAR on embedded Jetty 12.0.40 EE10 (see
+`MIGRATION_NOTES.md`, Milestone 6). No existing dependency changed version or scope in any of the four database
+profiles. The changes to this register are additions only. **No advisory lookup was made for the added components**;
+the 2026-10-16 findings below do not cover them, and a fresh lookup is needed before any sign-off.
+
+- **New jars shipped in `WEB-INF/lib` (compile scope):** `spring-boot` and `spring-boot-autoconfigure` 3.5.16,
+  `jul-to-slf4j` 2.0.18, `log4j-to-slf4j` and `log4j-api` 2.24.3 (bridges to SLF4J; Log4j Core is not present),
+  and `snakeyaml` 2.4 (the application has no YAML configuration file). Disposition: lookup required, then keep or
+  sign-off.
+- **Provided scope is now packaged.** The executable WAR carries its `provided` dependencies in
+  `WEB-INF/lib-provided` (39 jars) and runs them under `java -jar`: embedded Jetty 12.0.40 (server, EE10
+  servlet/webapp/annotations/plus/servlets, WebSocket, client), `mortbay-apache-jsp`/`mortbay-apache-el` 10.1.56, ECJ
+  3.33.0, and the container APIs (Servlet 6.0.0, JSP 3.1.1, EL 5.0.0, JSTL API 3.0.0, WebSocket 2.1.1, CDI 4.0.1,
+  Interceptor 2.1.0). The statement "container-provided, not shipped" below therefore holds only for an external
+  container deployment; for `java -jar` the patch level of these jars is the server patch level. Jetty 12.0.40 matches
+  the Maven plugin release reviewed in the plugin table. Disposition: lookup required.
+- **Excluded on purpose:** `tomcat-embed-el` (one EL implementation only) and ASM from the Jetty starter
+  (`org.ow2.asm:asm` stays test-only at 9.1).
+- **New build plugin:** `spring-boot-maven-plugin` 3.5.16 (`repackage`, build time only, without
+  `spring-boot-jarmode-tools`).
+- **Network exposure.** Spring Boot listens on all interfaces unless `server.address` is set; the documented run command
+  passes `--server.address=localhost`. This adds to item 2 (no authentication); it is not remediated.
+- **Lifecycle.** Spring Boot 3.5 OSS support ended on 2026-06-30, and Boot 3.5.16 is now the runtime, not only the BOM.
+  This stays a flag-only lifecycle risk with items 7 and 8. Using it here is not production risk acceptance and does not
+  imply commercial support.
+- **Logging.** Unchanged from the foundation update: SLF4J 2.0.18 / Logback 1.5.34, byte-identical `logback.xml` with
+  its `debug` level, `jpa.showSql=true`. Item 5 stays flag-only. Under `./mvnw jetty:run-war` the logs go through
+  the Maven logger, as before.
+- **Unchanged packaging finding (item 11):** the compile-scope JUnit Jupiter / Mockito jars still ship in `WEB-INF/lib`.
+- **Item 9 (Jib):** unchanged, and the Jib build was not tried with the executable WAR.
+- All other register items are unchanged and still flag-only.
+
 ## Method
 
 1. **Resolved graph.** `mvn dependency:tree` on JDK 21 / Maven 3.9.16, default `H2` profile (BUILD SUCCESS).
