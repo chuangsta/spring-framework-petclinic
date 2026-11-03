@@ -24,8 +24,13 @@ work around that restriction.
 ## Verify generated review content
 
 A successful Actions check is not proof of a review. In particular, the action
-can skip generation on the PR that first installs its workflow. Once that
-workflow is on the default branch, verify it on a normal, non-draft PR.
+skips generation when the workflow differs from its version on the default
+branch. This includes both the installation PR and a PR updating this workflow.
+The run reports `Skipping action due to workflow validation` and may finish
+successfully without posting any review. Do not bypass this validation.
+
+After a human merges the workflow change, verify generation on a normal,
+non-draft PR that does not change the review workflow.
 
 With an authenticated GitHub CLI, substitute the PR number below:
 
