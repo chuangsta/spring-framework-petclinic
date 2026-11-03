@@ -14,7 +14,7 @@ and Jakarta EE 10 (Servlet 6.0, JSP/JSTL 3.0). It is packaged as an executable W
 an embedded Jetty 12.0.40 (EE10) server. Spring Boot only hosts the application: the existing XML configuration still
 defines the root application context (`business-config.xml`, `tools-config.xml`) and the Spring MVC child context
 (`mvc-core-config.xml`) of the single `DispatcherServlet`, and the views are still JSPs. The same WAR also runs
-under the Jetty 12 EE10 Maven plugin (`./mvnw jetty:run-war`).
+under the Jetty 12 EE10 Maven plugin (see [With the Jetty Maven plugin](#with-the-jetty-maven-plugin-compatibility-path)).
 
 
 ## Understanding the Spring Petclinic application with a few diagrams
@@ -33,8 +33,9 @@ repository does not contain this migration, so a fresh clone of it does not buil
 The project builds and tests with JDK 21 and Maven 3.9.16. The Maven wrapper (`./mvnw`) downloads
 Maven 3.9.16 on first use.
 
-The compiler targets Java 21 (`maven.compiler.release` = `21`) on Spring Framework 6.2 and Jakarta EE 10,
-so JDK 21 or newer is required; JDK 8 can no longer build the project.
+The compiler targets Java 21 (`maven.compiler.release` = `21`) on Spring Framework 6.2 and Jakarta EE 10.
+Use JDK 21 only: the migration was built, tested and run with JDK 21 (Temurin 21.0.13+9), and newer JDKs were not
+verified. JDK 8 can no longer build the project.
 
 A JDK 21 can live under `~/.m2/tools` without changing the machine default JDK. Only the JDK is needed
 on `PATH`; Maven comes from the wrapper (`./mvnw`).
@@ -43,11 +44,12 @@ Select the JDK only through `JAVA_HOME`. The JDK folder name and layout depend o
 `JAVA_HOME` to wherever your JDK 21 lives. The commands below were verified with Temurin 21.0.13+9 unpacked under
 `~/.m2/tools/jdk-21.0.13+9` on Linux. Put the `export` in the same command as `./mvnw` or `java`: exports
 do not carry over between separate non-interactive shell sessions, and `./mvnw` reports
-"JAVA_HOME is not defined correctly" when `JAVA_HOME` is unset or wrong.
+"JAVA_HOME is not defined correctly" when `JAVA_HOME` is unset or wrong. The commands in this readme were verified
+on Linux only; Windows was not verified during the Spring Boot migration.
 ```
 # Linux (Temurin tarball unpacked under ~/.m2/tools)
 export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9" && ./mvnw --version   # Apache Maven 3.9.16, Java version: 21.0.13
-# macOS (Temurin tarball under ~/.m2/tools; system installs use /Library/Java/JavaVirtualMachines/<jdk>/Contents/Home)
+# macOS (not verified; Temurin tarball under ~/.m2/tools; system installs use /Library/Java/JavaVirtualMachines/<jdk>/Contents/Home)
 # export JAVA_HOME="$HOME/.m2/tools/<jdk-21-folder>/Contents/Home" && ./mvnw --version
 ```
 
@@ -62,7 +64,6 @@ From the root of the checkout:
 ```
 export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9" && ./mvnw -DskipTests package
 export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9" && "$JAVA_HOME/bin/java" -jar target/petclinic.war --server.address=localhost --server.port=8080
-# For Windows : set JAVA_HOME to your JDK 21, then mvnw.cmd -DskipTests package and "%JAVA_HOME%\bin\java" -jar target\petclinic.war
 ```
 The WAR does not depend on the source folder and can be started from any directory by passing its path. Stop it
 with Ctrl-C. `--server.address=localhost` keeps the listener on the loopback interface; without it Spring Boot
@@ -75,7 +76,6 @@ and `DigesterFactory` schema warnings.
 ### With the Jetty Maven plugin (compatibility path)
 ```
 export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9" && ./mvnw -DskipTests jetty:run-war
-# For Windows : set JAVA_HOME to your JDK 21, then mvnw.cmd -DskipTests jetty:run-war
 ```
 The `jetty-ee10-maven-plugin` 12.0.40 deploys the same WAR into its own Jetty as a traditional WAR, through
 `PetclinicInitializer` (a `SpringBootServletInitializer`). The embedded Jetty jars in `WEB-INF/lib-provided` are
@@ -191,11 +191,12 @@ export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9" && ./mvnw -DskipTests jetty:run
 
 ### Prerequisites
 The following items should be installed in your system:
-* JDK 21 (full JDK not a JRE), selected through `JAVA_HOME`
-* Maven 3.9+ (http://maven.apache.org/install.html), or the bundled `./mvnw` wrapper (Maven 3.9.16)
+* JDK 21 only (full JDK not a JRE), selected through `JAVA_HOME`
+* No separate Maven install: the bundled `./mvnw` wrapper downloads Maven 3.9.16. Run it with `JAVA_HOME` exported in
+  the same command, as in [Build toolchain: JDK 21 and Maven 3.9](#build-toolchain-jdk-21-and-maven-39)
 * git command line tool (https://help.github.com/articles/set-up-git)
 * Optional: a Jakarta EE 10 (Servlet 6.0) web container such as Jetty 12 (EE10) or Tomcat 10.1, if you prefer
-  deploying the WAR from your IDE instead of running the executable WAR or `./mvnw jetty:run-war`. Only the Jetty
+  deploying the WAR from your IDE instead of running the executable WAR or the Jetty Maven plugin. Only the Jetty
   Maven plugin deployment was verified during the Spring Boot migration.
 * Your prefered IDE 
   * Eclipse with the m2e plugin. Note: when m2e is available, there is an m2 icon in Help -> About dialog. If m2e is not there, just follow the install process here: http://www.eclipse.org/m2e/
@@ -212,9 +213,14 @@ a fresh clone of the upstream repository does not contain it.
 ```
 File -> Import -> Maven -> Existing Maven project
 ```
-Then either build on the command line `./mvnw generate-resources` or using the Eclipse launcher (right click on project and `Run As -> Maven install`) to generate the CSS.
-Build and run the executable WAR from the command line (see above), run `./mvnw jetty:run-war`, or configure a
-Jakarta EE 10 web container (Jetty 12 EE10 or Tomcat 10.1) and deploy the `petclinic.war` file.
+Then generate the CSS, either on the command line from the root of the checkout:
+```
+export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9" && ./mvnw generate-resources
+```
+or with the Eclipse launcher (right click on project and `Run As -> Maven install`), with JDK 21 as the project JRE.
+Build and run the executable WAR from the command line (see [Run the executable WAR](#run-the-executable-war)), run
+the Jetty Maven plugin (see [With the Jetty Maven plugin](#with-the-jetty-maven-plugin-compatibility-path)), or
+configure a Jakarta EE 10 web container (Jetty 12 EE10 or Tomcat 10.1) and deploy the `petclinic.war` file.
 `PetclinicInitializer` is the main class of the executable WAR. Starting it directly from the IDE classpath was not
 verified (the generated CSS is only in `target`, and embedded Jetty is a `provided` dependency); use the packaged WAR.
 
@@ -222,12 +228,19 @@ verified (the generated CSS is only in `target`, and embedded Jetty is a `provid
 
 In the main menu, select `File > Open` and select the Petclinic [pom.xml](pom.xml). Click on the `Open` button.
 
-CSS files are generated from the Maven build. You can either build them on the command line `./mvnw generate-resources` 
+Set the project SDK and the Maven runner JRE to JDK 21.
+
+CSS files are generated from the Maven build. You can either build them on the command line from the root of the
+checkout:
+```
+export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9" && ./mvnw generate-resources
+```
 or right click on the `spring-petclinic` project then `Maven -> Generates sources and Update Folders`.
 
-Set the project SDK to JDK 21. Then either run the `package` goal and start `target/petclinic.war` with
-`java -jar`, run the `jetty:run-war` Maven goal, or go to `Run -> Edit Configuration`, configure a Jakarta EE 10
-web container (Jetty 12 EE10 or Tomcat 10.1), and deploy the `petclinic.war` file.
+Then either build and start the executable WAR with the commands in [Run the executable WAR](#run-the-executable-war),
+run the `jetty:run-war` goal from the IntelliJ Maven tool window (or with the command in
+[With the Jetty Maven plugin](#with-the-jetty-maven-plugin-compatibility-path)), or go to `Run -> Edit Configuration`,
+configure a Jakarta EE 10 web container (Jetty 12 EE10 or Tomcat 10.1), and deploy the `petclinic.war` file.
 Run the application by clicking on the `Run` icon.
 
 
