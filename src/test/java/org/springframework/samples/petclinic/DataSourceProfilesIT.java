@@ -17,6 +17,7 @@ package org.springframework.samples.petclinic;
 
 import java.nio.file.Path;
 import java.sql.Connection;
+import java.sql.Driver;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -324,10 +325,13 @@ class DataSourceProfilesIT {
 
         final SimpleDriverDataSource dataSource;
 
-        SyntheticH2(String label) {
+        SyntheticH2(String label) throws ReflectiveOperationException {
             this.connectionUrl = "jdbc:h2:mem:datasource-profiles-it-" + label.replace(',', '-') + "-" + UUID.randomUUID();
-            this.dataSource = new SimpleDriverDataSource(new org.h2.Driver(), connectionUrl + ";DB_CLOSE_DELAY=-1",
-                "sa", "");
+            // Loaded by name: H2 is only on the classpath in the default H2 Maven profile, and the test sources must
+            // still compile under the HSQLDB, MySQL and PostgreSQL profiles.
+            Driver driver = Class.forName("org.h2.Driver").asSubclass(Driver.class).getDeclaredConstructor()
+                .newInstance();
+            this.dataSource = new SimpleDriverDataSource(driver, connectionUrl + ";DB_CLOSE_DELAY=-1", "sa", "");
         }
 
         int tableCount() {
