@@ -20,7 +20,7 @@ jobs:
           curl -fsSL https://app.factory.ai/cli | sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Run deep security review
-        run: droid exec --mission --auto low -m auto -r medium "/security-review across the entire repository Treat this as an audit for an Australian regulated bank. Prioritise supply-chain risk (dependencies with known CVEs, GitHub Actions not pinned to a SHA), hard-coded secrets, CI/CD workflow permissions and token scope, and Spring Boot actuator or dev-profile exposure. Report findings only, no code changes. Don't report a CVE unless you can name its ID and affected version."
+        run: droid exec --mission --auto medium -m auto -r medium "/security-review across the entire repository Treat this as an audit for an Australian regulated bank. Prioritise supply-chain risk (dependencies with known CVEs, GitHub Actions not pinned to a SHA), hard-coded secrets, CI/CD workflow permissions and token scope, and Spring Boot actuator or dev-profile exposure. Report findings only, no code changes. Don't report a CVE unless you can name its ID and affected version."
         env:
           FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}
       - name: Upload security review output
