@@ -306,3 +306,114 @@ scanner or runtime network call was added.
 Risks: advisory data reflects the lookup date only, and every disposition other than "keep" needs a bank decision.
 Reviewer verification: follow the "How a reviewer verifies" section of `DEPENDENCY_RISK_REVIEW.md`, and confirm
 `git diff HEAD~1 -- pom.xml src/` is empty for the review commit.
+
+## Milestone 5 — Spring Boot 3.5.16 dependency management (Boot foundation)
+
+Recorded 2026-11-03 on branch `migration/boot-foundation`, which starts from `mission-demo` commit `bae1eba`.
+This is the first of two Boot 3 milestones. It changes dependency management only. The application still
+starts through `PetclinicInitializer` under the Jetty EE10 Maven plugin. The Boot runtime, the Boot Maven
+plugin and the executable WAR come in the next milestone.
+
+### What changed
+
+`pom.xml` only (commit `d190fad`). No Java, XML, JSP, resource, test or workflow file changed.
+
+- `org.springframework.boot:spring-boot-dependencies` 3.5.16 is imported as a BOM in `dependencyManagement`,
+  after the existing Jackson 2.19.4 and Spring Data 2025.0.13 BOMs. The Boot parent POM is **not** used, so
+  resource filtering, compiler settings (`release` 21, `parameters`), Surefire includes, wro4j, WAR name,
+  plugins and the H2/HSQLDB/MySQL/PostgreSQL profiles are unchanged. No Boot jar is on the classpath yet.
+- `org.junit:junit-bom` `${junit-jupiter.version}` (5.14.4) is imported before the Boot BOM. Without it Boot
+  would move the JUnit Platform family (including the Surefire launcher) back to 5.12.2/1.12.2.
+- The bare Boot BOM import moved several transitive versions. Each one is pinned back in
+  `dependencyManagement` to the version resolved at `bae1eba`:
+
+  | Artifact | Scope in graph | Pinned at (baseline) |
+  | --- | --- | --- |
+  | `com.fasterxml:classmate` | compile | 1.5.1 |
+  | `jakarta.annotation:jakarta.annotation-api` | compile | 2.0.0 |
+  | `org.jboss.logging:jboss-logging` | compile | 3.5.0.Final |
+  | `org.jspecify:jspecify` | compile | 1.0.1 |
+  | `net.bytebuddy:byte-buddy-agent` | test | 1.11.19 |
+  | `net.minidev:json-smart`, `accessors-smart` | test | 2.4.7 |
+  | `org.ow2.asm:asm` | test | 9.1 |
+
+- **Approved logging exception (the only existing-pin change):**
+
+  | Artifact | From | To | Scope (unchanged) |
+  | --- | --- | --- | --- |
+  | `org.slf4j:slf4j-api` | 1.7.32 | 2.0.18 | compile |
+  | `ch.qos.logback:logback-classic` | 1.2.6 | 1.5.34 | runtime |
+  | `ch.qos.logback:logback-core` | 1.2.6 | 1.5.34 | runtime (now managed explicitly) |
+
+  `src/main/resources/logback.xml` is byte-identical (sha256 `50edb985…68ae4` in source and `target/classes`).
+  Log levels are unchanged, including the `debug` level for `org.springframework.samples.petclinic`.
+
+### Why
+
+- The Boot BOM is the dependency foundation for the Boot runtime cutover. Importing it without the parent keeps
+  every existing build behavior.
+- Logging: in an isolated readiness build, Boot 3.5.16 failed to start with the pinned Logback 1.2.6 and SLF4J
+  1.7.32. It failed even with `org.springframework.boot.logging.LoggingSystem=none`, before Jetty started:
+  `java.lang.AbstractMethodError: Receiver class org.springframework.boot.logging.logback.RootLogLevelConfigurator
+  does not define or inherit an implementation of the resolved method 'abstract void
+  configure(ch.qos.logback.classic.LoggerContext)' of interface ch.qos.logback.classic.spi.Configurator`.
+  `spring-boot.jar` registers that configurator through `META-INF/services`, and Logback 1.2 calls the older
+  method signature. The user approved SLF4J 2.0.18 / Logback 1.5.34 as the only existing-pin exception. With
+  that stack, the same readiness build started and used the unchanged `logback.xml`. The upgrade is made here,
+  alone, so that reviewers see it separately from the runtime change.
+
+### Results (JDK Temurin 21.0.13+9, Maven wrapper 3.9.16)
+
+- `./mvnw clean test` → `Tests run: 102, Failures: 0, Errors: 0, Skipped: 0`, BUILD SUCCESS. Each of the
+  `jdbc`, `jpa` and `spring-data-jpa` service test classes runs 13 tests. No test file changed.
+- `./mvnw -DskipTests package` → BUILD SUCCESS, `target/petclinic.war`.
+- `./mvnw dependency:list` for `-PH2`, `-PHSQLDB`, `-PMySQL` and `-PPostgreSQL`: compared with `bae1eba`, the only
+  differences are `slf4j-api` 2.0.18 and `logback-classic`/`logback-core` 1.5.34. No scope changed and no
+  artifact was added or removed. `tomcat-jdbc`/`tomcat-juli` stay 9.0.46 (the Boot BOM's own Tomcat 10.1.55
+  management does not reach them, because `tomcat-jdbc` is declared with an explicit version).
+- WAR inventory (62 jar files in `WEB-INF/lib`, same count as baseline): only the three logging jars differ. The
+  compile-scope JUnit/Mockito jars still ship (flag-only item, unchanged). No Boot jar ships.
+  *Count corrected on 2026-11-03:* this line first said 63 jars. That number counted the `WEB-INF/lib/` directory
+  entry of the archive listing. Baseline and foundation WARs both contain 62 jar files; the jar populations and the
+  three logging replacements were unaffected.
+- Effective POM outside `dependencyManagement`: only the new version properties and the two logging versions
+  differ. No parent, plugin or profile change. The filtered `data-access.properties` is identical.
+- `./mvnw -DskipTests jetty:run-war -Djetty.http.port=8080` (jetty-ee10-maven-plugin 12.0.40) starts. Five smoke
+  GETs return 200: `/` (Welcome), `/owners?lastName=Davis` (Betty Davis, Harold Davis), `/owners/2` (Betty
+  Davis, Basil, hamster), `/vets.xml` and `/vets.json` (six vets).
+- Browser (agent-browser, read-only): home → Find owners → Davis search → Betty Davis → home → Veterinarians.
+  Every request went to `localhost` with status 200, `petclinic.css` loaded, there were no console messages,
+  and the only page error on each page was the approved
+  `Bootstrap's JavaScript requires jQuery version 1.9.1 or higher, but lower than version 3`.
+
+### Risks
+
+- The Boot BOM manages many more artifacts than this project uses. A dependency added later without an explicit
+  version takes Boot's version. The next milestone adds Boot starters, so its dependency lists must be compared
+  again with these foundation lists, and any further drift needs a pin or explicit approval.
+- Logging behavior is preserved, not hardened: `logback.xml` (with its `debug` level) and `jpa.showSql=true` in
+  `data-access.properties` are unchanged. The debug/SQL logging bank risk flag stays flag-only.
+- Spring Boot 3.5 OSS support ended on 2026-06-30, so Boot 3.5.16 gets no further OSS releases. Using it here is
+  a flag-only lifecycle risk. It is not production risk acceptance and does not imply commercial support.
+- Unchanged and still flag-only: cross-owner pet edit, no authentication/authorization, raw exception page,
+  demo credentials and synthetic PII-like seed data, debug/SQL logging, no audit trail, compile-scope test jars
+  in the WAR, stale Jib base image. The visit-list route (`/owners/{ownerId}/pets/{petId}/visits`) still returns
+  HTTP 404 because `visitList.jsp` does not exist; this is preserved baseline behavior.
+
+### How a reviewer verifies
+
+```sh
+export JAVA_HOME=/home/factory-user/.m2/tools/jdk-21.0.13+9 && ./mvnw clean test   # 102, 0 failures/errors/skips
+export JAVA_HOME=/home/factory-user/.m2/tools/jdk-21.0.13+9 && ./mvnw -DskipTests package
+git diff bae1eba --stat                                     # pom.xml plus these two notes files
+git diff bae1eba -- src .github                             # empty
+for p in H2 HSQLDB MySQL PostgreSQL; do
+  export JAVA_HOME=/home/factory-user/.m2/tools/jdk-21.0.13+9 && ./mvnw -q -P$p dependency:list -DoutputFile=/tmp/deps-$p.txt
+done                                                         # repeat on bae1eba and diff: only slf4j-api/logback-* differ
+unzip -Z1 target/petclinic.war | grep -E 'slf4j|logback|spring-boot'   # slf4j-api-2.0.18, logback-*-1.5.34, no spring-boot
+sha256sum src/main/resources/logback.xml                    # same as on bae1eba
+export JAVA_HOME=/home/factory-user/.m2/tools/jdk-21.0.13+9 && ./mvnw -DskipTests jetty:run-war -Djetty.http.port=8080
+curl -s "http://localhost:8080/owners?lastName=Davis"       # in another shell: Betty Davis + Harold Davis
+```
+
+Adjust `JAVA_HOME` to your own JDK 21 folder; see `AGENTS.md`.

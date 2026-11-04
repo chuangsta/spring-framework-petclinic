@@ -25,6 +25,7 @@
         <!-- For framework compatibility, refer to the Spring Boot Dependencies BOM -->
         <!-- https://github.com/spring-projects/spring-boot/blob/master/spring-boot-project/spring-boot-dependencies/build.gradle -->
         <spring-framework.version>6.2.19</spring-framework.version>
+        <spring-boot.version>3.5.16</spring-boot.version>
 
         <!-- Web dependencies -->
         <!-- Version update should also be done in wro.xml, petclinic.less and static resources: htmlHeader.tag and footer.tag-->
@@ -49,8 +50,8 @@
         <h2database.version>2.1.214</h2database.version>
 
         <!-- Logging -->
-        <slf4j.version>1.7.32</slf4j.version>
-        <logback.version>1.2.6</logback.version>
+        <slf4j.version>2.0.18</slf4j.version>
+        <logback.version>1.5.34</logback.version>
 
         <!-- Test -->
         <assertj.version>3.21.0</assertj.version>
@@ -79,6 +80,15 @@
         <maven-war-plugin.version>3.5.1</maven-war-plugin.version>
         <jacoco-maven-plugin>0.8.13</jacoco-maven-plugin>
 
+        <!-- Transitive versions resolved before the Spring Boot BOM import; pinned so the BOM does not move them -->
+        <classmate.version>1.5.1</classmate.version>
+        <jakarta-annotation-api.version>2.0.0</jakarta-annotation-api.version>
+        <jboss-logging.version>3.5.0.Final</jboss-logging.version>
+        <jspecify.version>1.0.1</jspecify.version>
+        <byte-buddy-agent.version>1.11.19</byte-buddy-agent.version>
+        <json-smart.version>2.4.7</json-smart.version>
+        <asm.version>9.1</asm.version>
+
         <!-- Docker image -->
         <docker.jib-maven-plugin.version>2.6.0</docker.jib-maven-plugin.version>
         <docker.image.prefix>springcommunity</docker.image.prefix>
@@ -100,6 +110,68 @@
                 <version>${spring-data.version}</version>
                 <scope>import</scope>
                 <type>pom</type>
+            </dependency>
+            <!-- Keeps the whole JUnit Platform family (including the Surefire launcher) at the existing
+                 Jupiter version instead of the older one managed by the Spring Boot BOM -->
+            <dependency>
+                <groupId>org.junit</groupId>
+                <artifactId>junit-bom</artifactId>
+                <version>${junit-jupiter.version}</version>
+                <scope>import</scope>
+                <type>pom</type>
+            </dependency>
+            <!-- Imported last: entries above and explicit versions in this project take precedence -->
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring-boot.version}</version>
+                <scope>import</scope>
+                <type>pom</type>
+            </dependency>
+            <dependency>
+                <groupId>ch.qos.logback</groupId>
+                <artifactId>logback-core</artifactId>
+                <version>${logback.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.fasterxml</groupId>
+                <artifactId>classmate</artifactId>
+                <version>${classmate.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>jakarta.annotation</groupId>
+                <artifactId>jakarta.annotation-api</artifactId>
+                <version>${jakarta-annotation-api.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.jboss.logging</groupId>
+                <artifactId>jboss-logging</artifactId>
+                <version>${jboss-logging.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.jspecify</groupId>
+                <artifactId>jspecify</artifactId>
+                <version>${jspecify.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>net.bytebuddy</groupId>
+                <artifactId>byte-buddy-agent</artifactId>
+                <version>${byte-buddy-agent.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>net.minidev</groupId>
+                <artifactId>json-smart</artifactId>
+                <version>${json-smart.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>net.minidev</groupId>
+                <artifactId>accessors-smart</artifactId>
+                <version>${json-smart.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.ow2.asm</groupId>
+                <artifactId>asm</artifactId>
+                <version>${asm.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

@@ -10,6 +10,27 @@ This is a documentation-only review. It changes no dependency version or scope, 
 runtime network call, and applies no remediation. Every "recommended upgrade" or "sign-off required" item
 needs separate bank authorization.
 
+## Update 2026-11-03: Boot foundation (`migration/boot-foundation`)
+
+The findings below are the 2026-10-16 review and are kept as recorded. Since then one approved change affects
+this register:
+
+- **Logging upgrade (user-approved exception).** SLF4J 1.7.32 → 2.0.18 and Logback classic/core 1.2.6 →
+  1.5.34, with unchanged scopes (`slf4j-api` compile, `logback-*` runtime). Reason: Boot 3.5.16 fails to start
+  with Logback 1.2.6 (`AbstractMethodError` in Boot's `RootLogLevelConfigurator`), even with Boot's logging
+  system disabled. See `MIGRATION_NOTES.md`, Milestone 5. The 1.2.6 rows and the logging pin in item 10 below
+  are therefore historical. Going by the fix versions recorded in the logback row, 1.5.34 is at or above the
+  fixes for the High and Moderate items listed there. The Low items and any newer advisories were **not**
+  re-checked in this update; a fresh lookup is needed before any sign-off.
+- **Logging behavior is unchanged.** `logback.xml` is byte-identical, so the `debug` level for
+  `org.springframework.samples.petclinic` remains. `jpa.showSql=true` in `data-access.properties` is also
+  unchanged. Item 5 stays flag-only.
+- **Spring Boot 3.5.16 BOM imported.** It manages dependency versions only. Every other resolved version and
+  scope is unchanged in all four database profiles, and no Boot jar ships yet. Boot 3.5 OSS support ended on
+  2026-06-30 (see item 8). Using Boot 3.5.16 is a flag-only lifecycle risk. It is not production risk
+  acceptance and does not imply commercial support.
+- All other register items (1–4, 6–11) are unchanged and still flag-only.
+
 ## Method
 
 1. **Resolved graph.** `mvn dependency:tree` on JDK 21 / Maven 3.9.16, default `H2` profile (BUILD SUCCESS).
@@ -43,8 +64,8 @@ Dispositions:
 | `org.hibernate.validator:hibernate-validator` | 8.0.6.Final | No advisory found | Keep |
 | `com.fasterxml.jackson.core:jackson-core` | 2.19.4 | GHSA-72hv-8253-57qq / CVE-2026-18401 (Moderate); GHSA-r7wm-3cxj-wff9 / CVE-2026-68494 (High); GHSA-7hhh-6rmp-j9qf / CVE-2026-89425 (High); GHSA-p6pp-m3f8-5c89 / CVE-2026-89407 (High). All are parser DoS issues. Fixed in 2.18.11 / 2.21.7 / 2.22.3. The 2.19 line gets no fix. | **Sign-off required.** Recommended upgrade is a Jackson BOM of 2.21.7 or later, which is outside the approved matrix (2.19.4). The app only *serializes* `/vets.json` and does not parse untrusted JSON (no `@RequestBody` or `ObjectMapper` use in `src/main/java`), so exposure is low. |
 | `com.fasterxml.jackson.core:jackson-databind` (+ `jackson-annotations`) | 2.19.4 | 11 advisories, including High: GHSA-j3rv-43j4-c7qm / CVE-2026-54512 and GHSA-rmj7-2vxq-3g9f / CVE-2026-54513 (PolymorphicTypeValidator bypasses), GHSA-q4xh-88c3-wmh7 / CVE-2026-68497, GHSA-cxp5-3px4-pw24 / CVE-2026-91777, GHSA-wv8q-qhhj-9h54 / CVE-2026-91776 (DoS). Moderate: GHSA-3pjw-73gf-8qr5, GHSA-5jmj-h7xm-6q6v, GHSA-gx83-3vf8-gh7j, GHSA-hgj6-7826-r7m5, GHSA-vvgp-rfg2-7rr6, GHSA-wjgm-6hv5-3cvf. Fixed in 2.18.11 / 2.21.7 / 2.22.3. | **Sign-off required.** Same upgrade path as jackson-core. The deserialization and polymorphic-typing issues do not apply to output-only serialization with default typing off. |
-| `ch.qos.logback:logback-core` / `logback-classic` | 1.2.6 | GHSA-vmq6-5m68-f53m / CVE-2023-6378 (High, receiver deserialization; fixed in 1.2.13). GHSA-668q-qrv7-99fm / CVE-2021-42550 (Moderate; fixed in 1.2.9). GHSA-pr98-23f8-jwxv / CVE-2024-12798 (Moderate) and GHSA-25qh-j22f-pwp8 / CVE-2025-11226 (Moderate): fixed only in 1.3.x/1.5.x. Low: CVE-2024-12801, CVE-2026-1225, CVE-2026-9828, CVE-2026-10532. | **Sign-off required.** The 1.2.x line is unmaintained. 1.2.13 fixes the High item. A full fix needs logback 1.3+/1.5 with SLF4J 2, which is outside the matrix. Most items need attacker write access to `logback.xml` or a configured receiver; the app configures only a `ConsoleAppender`. |
-| `org.slf4j:slf4j-api` | 1.7.32 | No advisory found | Keep. Tied to the logback decision. |
+| `ch.qos.logback:logback-core` / `logback-classic` | 1.2.6 (historical; 1.5.34 since 2026-11-03, see Update) | GHSA-vmq6-5m68-f53m / CVE-2023-6378 (High, receiver deserialization; fixed in 1.2.13). GHSA-668q-qrv7-99fm / CVE-2021-42550 (Moderate; fixed in 1.2.9). GHSA-pr98-23f8-jwxv / CVE-2024-12798 (Moderate) and GHSA-25qh-j22f-pwp8 / CVE-2025-11226 (Moderate): fixed only in 1.3.x/1.5.x. Low: CVE-2024-12801, CVE-2026-1225, CVE-2026-9828, CVE-2026-10532. | **Sign-off required.** The 1.2.x line is unmaintained. 1.2.13 fixes the High item. A full fix needs logback 1.3+/1.5 with SLF4J 2, which is outside the matrix. Most items need attacker write access to `logback.xml` or a configured receiver; the app configures only a `ConsoleAppender`. |
+| `org.slf4j:slf4j-api` | 1.7.32 (historical; 2.0.18 since 2026-11-03, see Update) | No advisory found | Keep. Tied to the logback decision. |
 | `com.h2database:h2` (default `H2` profile) | 2.1.214 | GHSA-22wj-vf5f-wrvj / CVE-2022-45868 (High; disputed by the vendor): cleartext `-webAdminPassword` when the console starts from the CLI. Fixed in 2.2.220. | **Sign-off required (behavior-preservation pin, item 10).** The app does not start the H2 console. An upgrade to 2.2.x can change SQL and seed-script behavior. Use as an in-memory demo database only. |
 | `org.apache.tomcat:tomcat-jdbc` / `tomcat-juli` | 9.0.46 | No advisory found for these coordinates | **Sign-off required (pin, item 10).** Pinned on purpose to preserve pool behavior. Tomcat server CVEs do not apply to the standalone pool jar, but the pin is from 2021. |
 | `org.aspectj:aspectjrt` / `aspectjweaver` | 1.9.7 | No advisory found | Keep. Old (2021) but works on Java 21 for proxy-based AOP; all tests pass. |
@@ -134,7 +155,8 @@ recorded bank decision (accept, or authorize a separate change) before productio
     - tomcat-jdbc 9.0.46 pool.
     - Webjars Bootstrap 3.3.6 (7 XSS advisories), jQuery UI 1.12.1 (4 XSS advisories), and jQuery 3.5.1.
       The known Bootstrap/jQuery page error is approved.
-    - Logback 1.2.6 / SLF4J 1.7.32 (logback 1.2.x is unmaintained).
+    - Logback 1.2.6 / SLF4J 1.7.32 (logback 1.2.x is unmaintained). Historical: replaced on 2026-11-03 by the
+      approved Logback 1.5.34 / SLF4J 2.0.18 upgrade (see Update).
     - Jackson 2.19.4 (the 2.19 line gets no fixes; recommended move to 2.21.7+).
     - Profile drivers: HSQLDB 2.5.2, MySQL Connector/J 8.0.28, and PostgreSQL JDBC 42.5.0.
 
