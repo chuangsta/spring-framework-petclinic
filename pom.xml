@@ -404,6 +404,13 @@
             <version>${hamcrest.version}</version>
             <scope>test</scope>
         </dependency>
+        <!-- java:comp naming for the Jetty container started by DataSourceProfilesIT (javaee profile).
+             spring-boot-starter-jetty does not bring it in, and the application never needs it at runtime -->
+        <dependency>
+            <groupId>org.eclipse.jetty</groupId>
+            <artifactId>jetty-jndi</artifactId>
+            <scope>test</scope>
+        </dependency>
 
         <!-- JAXB is not part of Java SE since Java 11 -->
         <dependency>
