@@ -1,0 +1,33 @@
+# factory-automation: 80c85454-d420-4c4b-937a-e0d15afd5c0e
+name: Deep Security Review
+"on":
+  workflow_dispatch: {}
+  schedule:
+    - cron: 0 21 * * 0
+permissions:
+  contents: read
+concurrency:
+  group: droid-security-audit
+  cancel-in-progress: false
+jobs:
+  security-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Factory Droid
+        run: |
+          curl -fsSL https://app.factory.ai/cli | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Run deep security review
+        run: droid exec --mission --auto low -m auto -r medium "/security-review across the entire repository Treat this as an audit for an Australian regulated bank. Prioritise supply-chain risk (dependencies with known CVEs, GitHub Actions not pinned to a SHA), hard-coded secrets, CI/CD workflow permissions and token scope, and Spring Boot actuator or dev-profile exposure. Report findings only, no code changes. Don't report a CVE unless you can name its ID and affected version."
+        env:
+          FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}
+      - name: Upload security review output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deep-security-review-${{ github.run_id }}
+          path: ~/security-audits/
+          if-no-files-found: warn
+          retention-days: 90
