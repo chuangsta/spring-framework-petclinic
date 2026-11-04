@@ -111,7 +111,18 @@ A similar setups is provided for MySQL and PostgreSQL in case a persistent datab
 To run petclinic locally using persistent database, it is needed to run with profile defined in main pom.xml file.
 The Maven profile selects the JDBC driver and filters the connection settings into `data-access.properties` at build
 time, so build the WAR with the profile and then run it as usual. Only the default H2 profile was run during the
-Spring Boot migration; the dependency lists of all four database profiles were checked.
+Spring Boot migration. For the `HSQLDB`, `MySQL` and `PostgreSQL` profiles, the dependency lists were checked and a
+`clean package` was built and its WAR inspected; no application run or test ran against those databases. The build
+check needs no database. `-DskipTests` skips running the tests but still compiles the test sources (unlike
+`-Dmaven.test.skip=true`), so it also checks that the tests compile under the profile:
+
+```
+export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9" && ./mvnw -PHSQLDB -DskipTests clean package      # WAR: hsqldb-2.5.2.jar, no h2 jar
+export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9" && ./mvnw -PMySQL -DskipTests clean package       # WAR: mysql-connector-java-8.0.28.jar, no h2 jar
+export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9" && ./mvnw -PPostgreSQL -DskipTests clean package  # WAR: postgresql-42.5.0.jar, no h2 jar
+unzip -Z1 target/petclinic.war | grep -E '^WEB-INF/lib/(h2|hsqldb|mysql|postgresql|jetty-jndi)'   # after each build: only that profile's driver
+export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9" && ./mvnw -DskipTests clean package               # back to the default H2 WAR (h2-2.1.214.jar)
+```
 
 For MySQL database, it is needed to run with 'MySQL' profile defined in main pom.xml file.
 
@@ -220,6 +231,11 @@ on its own:
 ```
 export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9" && ./mvnw -Dtest=DataSourceProfilesIT test   # expect: Tests run: 9, Failures: 0, Errors: 0, Skipped: 0
 ```
+
+The test needs H2, so run it only with the default H2 Maven profile, as above. H2 is not on the classpath with the
+`HSQLDB`, `MySQL` or `PostgreSQL` profiles. The test loads the H2 driver by class name, so the test sources still
+compile under those profiles (see the build check in [Database configuration](#database-configuration)), but do not
+run this test with them.
 
 Deployment into a real container with a real JNDI data source was not verified during the migration; only this
 in-process Jetty fixture was.

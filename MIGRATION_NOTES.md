@@ -654,3 +654,74 @@ git diff f0f1f61 --diff-filter=MD -- src/test                                # e
 ```
 
 Adjust `JAVA_HOME` to your own JDK 21 folder; see `AGENTS.md`.
+
+## Milestone 6 follow-up 2 — H2 test fixture under the non-H2 database profiles (PR review)
+
+Recorded 2026-11-04 on branch `migration/boot-runtime`. The follow-up section above is kept as recorded; this section
+describes the second PR-review fix and is the current state.
+
+### Branch ancestry
+
+- PR #6 (`migration/boot-foundation`, head `5381886`) was merged by a human into `mission-demo` on 2026-11-04, as
+  merge commit `4219059`. The tree of `4219059` equals `5381886`, and the merge base of `migration/boot-runtime` and
+  `mission-demo` is `5381886`, so PR #7 now shows only the runtime commits.
+- `b7e006c` is the fix below, on top of `280a98a`. No published history was rewritten.
+
+### What changed
+
+- **The bug.** `DataSourceProfilesIT` (added in `0455387`) called `new org.h2.Driver()`. H2 is a dependency of the
+  default `H2` Maven profile only. With `-PHSQLDB`, `-PMySQL` or `-PPostgreSQL`, test compilation failed with
+  `DataSourceProfilesIT.java:[329,68] package org.h2 does not exist`, so those profiles could not be packaged even with
+  `-DskipTests`. The follow-up runs above used only the default H2 profile and `dependency:list` (which does not
+  compile), so they did not cover this.
+- **The fix** (`b7e006c`, test source only). The fixture loads the driver by name:
+  `Class.forName("org.h2.Driver").asSubclass(java.sql.Driver.class).getDeclaredConstructor().newInstance()`. It keeps
+  the same `SimpleDriverDataSource`, the same synthetic `jdbc:h2:mem:datasource-profiles-it-*` URLs and the same
+  `SHUTDOWN` cleanup. No error is suppressed: without H2 the constructor throws `ClassNotFoundException`.
+- **Unchanged.** No `pom.xml`, dependency, version, scope, production code, configuration, profile selection or test
+  selection change (`git diff 280a98a b7e006c --stat` lists only `DataSourceProfilesIT.java`). No existing test or
+  assertion changed; the 102-test run is the same.
+- **Scope of the IT.** `DataSourceProfilesIT` stays H2-specific. Run it only with the default H2 Maven profile; it
+  was not run with the other profiles.
+
+### Results (JDK Temurin 21.0.13+9, Maven wrapper 3.9.16, inputs `b7e006c`)
+
+Fix run, serial, every command exit 0:
+
+- `./mvnw clean test` → `Tests run: 102, Failures: 0, Errors: 0, Skipped: 0`, BUILD SUCCESS.
+- `./mvnw -Dtest=DataSourceProfilesIT test` → `Tests run: 9, Failures: 0, Errors: 0, Skipped: 0`, BUILD SUCCESS.
+- `./mvnw -DskipTests package` (default H2) → BUILD SUCCESS; the WAR has `h2-2.1.214.jar` and no other driver.
+- Each of the following WARs was inspected before the next `clean`:
+
+| Command | testCompile | Test execution | Driver jar in `WEB-INF/lib` | `h2` jar | `jetty-jndi` jar |
+| --- | --- | --- | --- | --- | --- |
+| `./mvnw -PHSQLDB -DskipTests clean package` | 15 sources compiled | skipped | `hsqldb-2.5.2.jar` only | absent | absent |
+| `./mvnw -PMySQL -DskipTests clean package` | 15 sources compiled | skipped | `mysql-connector-java-8.0.28.jar` only | absent | absent |
+| `./mvnw -PPostgreSQL -DskipTests clean package` | 15 sources compiled | skipped | `postgresql-42.5.0.jar` only | absent | absent |
+| `./mvnw -DskipTests clean package` (default H2, last) | 15 sources compiled | skipped | `h2-2.1.214.jar` only | present | absent |
+
+Delivery run, serial, on the same `b7e006c` build inputs (the documentation commit on top changes no build input):
+`./mvnw clean test` → `Tests run: 102, Failures: 0, Errors: 0, Skipped: 0` (13 per persistence service class),
+exit 0; `./mvnw -DskipTests package` → exit 0, default H2 WAR with `h2-2.1.214.jar` and no other driver, no
+`jetty-jndi`, `WEB-INF/lib` 68 jar files and `WEB-INF/lib-provided` 39, `WarLauncher` / `PetclinicInitializer`
+manifest.
+
+Not run: any test or application run against HSQLDB, MySQL or PostgreSQL; no database was provisioned. The runtime,
+plugin and browser results recorded above for `0455387` are reused: `b7e006c` changes only a test source, which is
+not in the WAR.
+
+### How a reviewer verifies
+
+Run these from the root of a checkout of `migration/boot-runtime`.
+
+```sh
+export JAVA_HOME=/home/factory-user/.m2/tools/jdk-21.0.13+9 && ./mvnw clean test                       # 102, 0 failures/errors/skips
+export JAVA_HOME=/home/factory-user/.m2/tools/jdk-21.0.13+9 && ./mvnw -Dtest=DataSourceProfilesIT test   # 9, 0 failures/errors/skips
+export JAVA_HOME=/home/factory-user/.m2/tools/jdk-21.0.13+9 && ./mvnw -PMySQL -DskipTests clean package # also -PHSQLDB, -PPostgreSQL
+unzip -Z1 target/petclinic.war | grep -E '^WEB-INF/lib/(h2|hsqldb|mysql|postgresql|jetty-jndi)'         # only that profile's driver
+export JAVA_HOME=/home/factory-user/.m2/tools/jdk-21.0.13+9 && ./mvnw -DskipTests clean package         # default H2 WAR again
+git diff 280a98a --stat                                                                                  # DataSourceProfilesIT.java and docs only
+git diff 280a98a -- pom.xml src/main .github                                                             # empty
+```
+
+Adjust `JAVA_HOME` to your own JDK 21 folder; see `AGENTS.md`.
