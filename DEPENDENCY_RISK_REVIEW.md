@@ -65,6 +65,16 @@ the 2026-10-16 findings below do not cover them, and a fresh lookup is needed be
 - **Item 9 (Jib):** unchanged, and the Jib build was not tried with the executable WAR.
 - All other register items are unchanged and still flag-only.
 
+## Update 2026-11-04: data source profiles (`migration/boot-runtime`)
+
+- **New test-only dependency:** `org.eclipse.jetty:jetty-jndi` 12.0.40 (`test` scope, version from the existing Jetty
+  BOM), used by `DataSourceProfilesIT` for `java:comp` naming. It is not packaged in the WAR and is not a runtime
+  dependency. No advisory lookup was made for it. No production dependency, version or scope changed.
+- **Destructive schema scripts (unchanged behavior).** The `javaee` profile now starts, so the H2/HSQLDB schema scripts
+  (which drop the tables) also run against the JNDI data source. Bind only a database whose data may be discarded. See
+  `MIGRATION_NOTES.md`, "Milestone 6 follow-up".
+- All other register items are unchanged and still flag-only.
+
 ## Method
 
 1. **Resolved graph.** `mvn dependency:tree` on JDK 21 / Maven 3.9.16, default `H2` profile (BUILD SUCCESS).

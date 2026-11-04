@@ -186,6 +186,44 @@ With the Jetty Maven plugin:
 export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9" && ./mvnw -DskipTests jetty:run-war -Dspring.profiles.active=jdbc
 ```
 
+### Local or container-managed data source (`javaee` profile)
+
+[datasource-config.xml](src/main/resources/spring/datasource-config.xml) defines the `dataSource` bean in exactly one
+of two profile blocks at the end of the file:
+
+* without the `javaee` profile (`!javaee`, the normal case): the local `tomcat-jdbc` pool, configured from
+  `data-access.properties` (in-memory H2 by default);
+* with the `javaee` profile: a JNDI lookup of `java:comp/env/jdbc/petclinic`, provided by the web container. There is
+  no fallback to the local pool: if nothing is bound at that name, startup fails with `NameNotFoundException`.
+
+Spring Boot's bean definition overriding stays disabled, so only one `dataSource` definition may exist.
+
+`javaee` only selects the data source, not a persistence implementation. Because an explicitly active profile replaces
+the default `jpa` profile, pair it with one of the persistence profiles: `jpa,javaee`, `jdbc,javaee` or
+`spring-data-jpa,javaee`. With `javaee` alone no persistence implementation is active, and startup fails with a
+`NoSuchBeanDefinitionException` for a repository; JPA is not activated implicitly.
+
+The schema and data scripts run at every startup, against the local pool or the JNDI data source alike. The H2 and
+HSQLDB schema scripts drop and recreate the tables, so never bind `java:comp/env/jdbc/petclinic` (or point `jdbc.url`)
+at a database whose data you want to keep.
+
+The `javaee` profile is checked by a separate integration test, `DataSourceProfilesIT`. It starts the application
+through its external-container path (`PetclinicInitializer`, Spring Boot) inside a real Jetty 12.0.40 EE10 web
+application with Jetty JNDI naming and an in-memory connector (no network port). For each `javaee` pairing it binds a
+new, empty, synthetic in-memory H2 2.1.214 database, then checks that the application uses that exact data source and
+reads the seeded data. It also checks the missing-binding failure, `javaee` alone, and the local pool for no profile,
+`jpa`, `jdbc` and `spring-data-jpa`. The fixture is test-only: `org.eclipse.jetty:jetty-jndi` 12.0.40 in `test`
+scope and `src/test/resources/datasource-profiles/web.xml`; neither is packaged in the WAR, and the application gains
+no runtime dependency. The test is not part of the 102-test run (Surefire includes `*Tests.java` only), so run it
+on its own:
+
+```
+export JAVA_HOME="$HOME/.m2/tools/jdk-21.0.13+9" && ./mvnw -Dtest=DataSourceProfilesIT test   # expect: Tests run: 9, Failures: 0, Errors: 0, Skipped: 0
+```
+
+Deployment into a real container with a real JNDI data source was not verified during the migration; only this
+in-process Jetty fixture was.
+
 
 ## Working with Petclinic in your IDE
 
@@ -270,7 +308,7 @@ Visit [http://localhost:8080](http://localhost:8080) in your browser.
 |-----------------------------------|-------|
 | Transactions | [business-config.xml](src/main/resources/spring/business-config.xml), [ClinicServiceImpl.java](src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java) |
 | Cache | [tools-config.xml](src/main/resources/spring/tools-config.xml), [ClinicServiceImpl.java](src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java) |
-| Bean Profiles | [business-config.xml](src/main/resources/spring/business-config.xml), [ClinicServiceJdbcTests.java](src/test/java/org/springframework/samples/petclinic/service/ClinicServiceJdbcTests.java), [PetclinicInitializer.java](src/main/java/org/springframework/samples/petclinic/PetclinicInitializer.java) |
+| Bean Profiles | [business-config.xml](src/main/resources/spring/business-config.xml), [datasource-config.xml](src/main/resources/spring/datasource-config.xml), [DataSourceProfilesIT.java](src/test/java/org/springframework/samples/petclinic/DataSourceProfilesIT.java), [ClinicServiceJdbcTests.java](src/test/java/org/springframework/samples/petclinic/service/ClinicServiceJdbcTests.java), [PetclinicInitializer.java](src/main/java/org/springframework/samples/petclinic/PetclinicInitializer.java) |
 | JDBC | [business-config.xml](src/main/resources/spring/business-config.xml), [jdbc folder](src/main/java/org/springframework/samples/petclinic/repository/jdbc) |
 | JPA | [business-config.xml](src/main/resources/spring/business-config.xml), [jpa folder](src/main/java/org/springframework/samples/petclinic/repository/jpa) |
 | Spring Data JPA | [business-config.xml](src/main/resources/spring/business-config.xml), [springdatajpa folder](src/main/java/org/springframework/samples/petclinic/repository/springdatajpa) |

@@ -549,7 +549,7 @@ Run these from the root of a checkout of `migration/boot-runtime`. Only one serv
 ```sh
 export JAVA_HOME=/home/factory-user/.m2/tools/jdk-21.0.13+9 && ./mvnw clean test   # 102, 0 failures/errors/skips
 export JAVA_HOME=/home/factory-user/.m2/tools/jdk-21.0.13+9 && ./mvnw -DskipTests package
-git diff 979c388 --stat -- src .github                      # PetclinicInitializer.java only
+git diff 979c388 --stat -- src .github                      # PetclinicInitializer.java only (at f0f1f61; see the follow-up below)
 unzip -p target/petclinic.war META-INF/MANIFEST.MF          # WarLauncher, Start-Class PetclinicInitializer
 unzip -Z1 target/petclinic.war | grep -cE '^WEB-INF/lib/.+\.jar$'            # 68
 unzip -Z1 target/petclinic.war | grep -cE '^WEB-INF/lib-provided/.+\.jar$'   # 39
@@ -561,6 +561,96 @@ unzip -Z1 target/petclinic.war | grep -E 'tomcat-embed-el|expressly'          # 
 #   repeat with --spring.profiles.active=jdbc and --spring.profiles.active=spring-data-jpa, stopping each run
 #   after the last WAR run is stopped (port 8080 free), still in the repository root:
 export JAVA_HOME=/home/factory-user/.m2/tools/jdk-21.0.13+9 && ./mvnw -DskipTests jetty:run-war -Djetty.http.port=8080
+```
+
+Adjust `JAVA_HOME` to your own JDK 21 folder; see `AGENTS.md`.
+
+## Milestone 6 follow-up — mutually exclusive local and JNDI data sources (PR review)
+
+Recorded 2026-11-04 on branch `migration/boot-runtime`. The Milestone 6 text above is kept as recorded on 2026-11-03;
+this section describes what changed after the PR review and is the current state.
+
+### Branch ancestry
+
+- The foundation branch `migration/boot-foundation` was corrected: `5381886` is a normal cherry-pick of `7139e64`
+  (the Milestone 5 jar count, 63 → 62 jar files). It is the current foundation head.
+- `e12f12f` is a normal merge of `5381886` into `migration/boot-runtime`. Its tree equals `f0f1f61`, because
+  `7139e64` was already on this branch. `git merge-base --is-ancestor 5381886 migration/boot-runtime` exits 0.
+- `0455387` is the data source change below. No published history was rewritten.
+
+### What changed
+
+- **The bug.** With the `javaee` profile active, `datasource-config.xml` registered two `dataSource` definitions: the
+  unconditional local `tomcat-jdbc` pool and the JNDI lookup in the `javaee` block. Spring Boot does not allow bean
+  definition overriding, so startup failed with `BeanDefinitionParsingException: Invalid bean definition with name
+  'dataSource' ... since there is already [org.apache.tomcat.jdbc.pool.DataSource] bound`, before any JNDI lookup. The
+  Milestone 6 runs above never activated `javaee`, so they did not cover this.
+- **The fix** (`datasource-config.xml`, commit `0455387`). The local pool moves into a nested
+  `<beans profile="!javaee">` block at the end of the file, just before the unchanged `javaee` block that looks up
+  `java:comp/env/jdbc/petclinic`. The property placeholder and `<jdbc:initialize-database>` stay unconditional, so both
+  kinds of data source get the same schema and data scripts. Bean definition overriding stays disabled.
+- **Profile semantics** (unchanged apart from the fix). No profile still means the default `jpa`; `jpa`, `jdbc` and
+  `spring-data-jpa` still select one implementation on the local pool. `javaee` selects only the data source and is
+  paired with a persistence profile: `jpa,javaee`, `jdbc,javaee`, `spring-data-jpa,javaee`. `javaee` alone replaces
+  the default `jpa` profile, so no persistence implementation is active and startup fails with
+  `NoSuchBeanDefinitionException` (for `PetRepository`). JPA is not activated implicitly. A missing JNDI binding
+  fails startup with `NameNotFoundException: jdbc is not bound`; there is no fallback to the local pool.
+- **Destructive scripts.** The H2 and HSQLDB `schema.sql` scripts drop and recreate the tables at every startup. The
+  JNDI data source gets them too, so never bind a database whose data must be kept.
+- **Test-only fixture.** `DataSourceProfilesIT` (9 tests) and `src/test/resources/datasource-profiles/web.xml` (a
+  `resource-ref` for `jdbc/petclinic`). The test deploys `src/main/webapp` into a real Jetty 12.0.40 EE10
+  `WebAppContext` with Jetty JNDI naming, starts the application through `SpringServletContainerInitializer` →
+  `PetclinicInitializer` (Spring Boot), and talks to it over an in-memory `LocalConnector` (no network port). Each
+  `javaee` case binds its own new, empty, synthetic in-memory H2 2.1.214 database. The test checks that bean
+  `dataSource` is that exact bound object, the connection URL, the seeded data (10 owners, owner 2 Betty), the selected
+  repository implementation, the root/dispatcher context boundary and `/vets.json` (six vets).
+- **Dependency.** `org.eclipse.jetty:jetty-jndi` in `test` scope, version 12.0.40 from the existing Jetty BOM, for
+  the fixture's `java:comp` naming (`spring-boot-starter-jetty` does not bring it). No production dependency, version
+  or scope changed, and the WAR does not contain it. H2 2.1.214 is the existing dependency.
+- **Test selection.** Surefire still includes `**/*Tests.java` only, so `./mvnw clean test` still runs the same 102
+  tests. No existing test or assertion changed. The integration test runs on its own (see below).
+
+### Results (JDK Temurin 21.0.13+9, Maven wrapper 3.9.16)
+
+- Before the fix, on `e12f12f` plus the new test: 9 tests, 2 failures, 3 errors. The five `javaee` cases failed with
+  the duplicate-definition error; the four local cases passed.
+- On `0455387` (implementation run, then repeated by the delivery run on the same build inputs):
+  - `./mvnw clean test` → `Tests run: 102, Failures: 0, Errors: 0, Skipped: 0`, BUILD SUCCESS; 13 tests per
+    persistence service class.
+  - `./mvnw -DskipTests package` → BUILD SUCCESS. `WEB-INF/lib` 68 jar files and `WEB-INF/lib-provided` 39, the same
+    as Milestone 6; no `jetty-jndi` jar; `petclinic.css` present.
+  - `./mvnw -Dtest=DataSourceProfilesIT test` → `Tests run: 9, Failures: 0, Errors: 0, Skipped: 0`. The run also
+    logs two expected startup failures (missing binding and `javaee` alone).
+  - `dependency:list` for `-PH2`, `-PHSQLDB`, `-PMySQL`, `-PPostgreSQL`: the only difference from `f0f1f61` is
+    `org.eclipse.jetty:jetty-jndi:jar:12.0.40:test`.
+- Implementation run on the `0455387` WAR: started from `/tmp` with `--server.address=localhost`, one profile at a
+  time (default `jpa`, `jdbc`, `spring-data-jpa`), the five `AGENTS.md` smoke checks returned 200 with the expected
+  content and the visit-list route returned 404. `./mvnw -DskipTests jetty:run-war -Djetty.http.port=8080` gave the
+  same result. A read-only agent-browser run (home → Find owners → Davis → Betty Davis → home → Veterinarians) made 75
+  requests, all to `localhost` and all 200, with 0 console messages and only the approved Bootstrap/jQuery page error
+  (once per page, 6 in total).
+- Not verified: deployment into a real container with a real JNDI data source. Only the in-process Jetty fixture
+  above exercised the `javaee` profile.
+
+### Risks
+
+- `jetty-jndi` is test-only and not shipped. No advisory lookup was made for it.
+- The schema scripts are destructive (see above). This is unchanged behavior; it now applies to the JNDI data source
+  as well, because `javaee` startup works.
+- All Milestone 6 risks and flag-only items are unchanged.
+
+### How a reviewer verifies
+
+Run these from the root of a checkout of `migration/boot-runtime`.
+
+```sh
+export JAVA_HOME=/home/factory-user/.m2/tools/jdk-21.0.13+9 && ./mvnw clean test                     # 102, 0 failures/errors/skips
+export JAVA_HOME=/home/factory-user/.m2/tools/jdk-21.0.13+9 && ./mvnw -Dtest=DataSourceProfilesIT test # 9, 0 failures/errors/skips
+export JAVA_HOME=/home/factory-user/.m2/tools/jdk-21.0.13+9 && ./mvnw -DskipTests package
+unzip -Z1 target/petclinic.war | grep -c jetty-jndi                          # 0
+git merge-base --is-ancestor 5381886 HEAD && echo ancestor                   # ancestor
+git diff f0f1f61 --stat -- src pom.xml                                       # datasource-config.xml, pom.xml, the IT and its web.xml
+git diff f0f1f61 --diff-filter=MD -- src/test                                # empty: no existing test changed
 ```
 
 Adjust `JAVA_HOME` to your own JDK 21 folder; see `AGENTS.md`.
