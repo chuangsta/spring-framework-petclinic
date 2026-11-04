@@ -15,28 +15,104 @@
  */
 package org.springframework.samples.petclinic;
 
-import org.springframework.web.context.WebApplicationContext;
+import java.util.ArrayList;
+import java.util.List;
+
+import org.slf4j.LoggerFactory;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.SpringBootConfiguration;
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.autoconfigure.aop.AopAutoConfiguration;
+import org.springframework.boot.autoconfigure.cache.CacheAutoConfiguration;
+import org.springframework.boot.autoconfigure.context.MessageSourceAutoConfiguration;
+import org.springframework.boot.autoconfigure.context.PropertyPlaceholderAutoConfiguration;
+import org.springframework.boot.autoconfigure.dao.PersistenceExceptionTranslationAutoConfiguration;
+import org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration;
+import org.springframework.boot.autoconfigure.data.web.SpringDataWebAutoConfiguration;
+import org.springframework.boot.autoconfigure.http.HttpMessageConvertersAutoConfiguration;
+import org.springframework.boot.autoconfigure.jackson.JacksonAutoConfiguration;
+import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
+import org.springframework.boot.autoconfigure.jdbc.DataSourceTransactionManagerAutoConfiguration;
+import org.springframework.boot.autoconfigure.jdbc.JdbcClientAutoConfiguration;
+import org.springframework.boot.autoconfigure.jdbc.JdbcTemplateAutoConfiguration;
+import org.springframework.boot.autoconfigure.jmx.JmxAutoConfiguration;
+import org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration;
+import org.springframework.boot.autoconfigure.sql.init.SqlInitializationAutoConfiguration;
+import org.springframework.boot.autoconfigure.task.TaskExecutionAutoConfiguration;
+import org.springframework.boot.autoconfigure.task.TaskSchedulingAutoConfiguration;
+import org.springframework.boot.autoconfigure.transaction.TransactionAutoConfiguration;
+import org.springframework.boot.autoconfigure.transaction.TransactionManagerCustomizationAutoConfiguration;
+import org.springframework.boot.autoconfigure.transaction.jta.JtaAutoConfiguration;
+import org.springframework.boot.autoconfigure.validation.ValidationAutoConfiguration;
+import org.springframework.boot.autoconfigure.web.servlet.DispatcherServletAutoConfiguration;
+import org.springframework.boot.autoconfigure.web.servlet.HttpEncodingAutoConfiguration;
+import org.springframework.boot.autoconfigure.web.servlet.MultipartAutoConfiguration;
+import org.springframework.boot.autoconfigure.web.servlet.WebMvcAutoConfiguration;
+import org.springframework.boot.autoconfigure.web.servlet.error.ErrorMvcAutoConfiguration;
+import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.context.logging.LoggingApplicationListener;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
+import org.springframework.boot.web.servlet.ServletRegistrationBean;
+import org.springframework.boot.web.servlet.support.SpringBootServletInitializer;
+import org.springframework.context.ApplicationListener;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.ImportResource;
 import org.springframework.web.context.support.XmlWebApplicationContext;
 import org.springframework.web.filter.CharacterEncodingFilter;
 import org.springframework.web.servlet.DispatcherServlet;
-import org.springframework.web.servlet.support.AbstractDispatcherServletInitializer;
 
-import jakarta.servlet.Filter;
-import jakarta.servlet.ServletContext;
+import jakarta.servlet.DispatcherType;
 
 
 /**
- * In Servlet 3.0+ environments, this class replaces the traditional {@code web.xml}-based approach in order to configure the
- * {@link ServletContext} programmatically.
+ * Single entry point of the application, for both the executable WAR ({@code java -jar petclinic.war}) and a
+ * WAR deployed to an external Servlet container (for example {@code ./mvnw jetty:run-war}).
  * <p/>
- * Create the Spring "<strong>root</strong>" application context.<br/>
- * Register a {@link DispatcherServlet}  in the servlet context.<br/>
- * For both servlets, register a {@link CharacterEncodingFilter}.
+ * The Spring "<strong>root</strong>" application context is the Spring Boot context. It imports the existing
+ * business and tools XML configuration and nothing else: there is no component scan here.<br/>
+ * A single {@link DispatcherServlet}, mapped to {@code /}, owns a child {@link XmlWebApplicationContext} loaded
+ * from the existing MVC XML configuration.<br/>
+ * A {@link CharacterEncodingFilter} forcing UTF-8 is mapped to that servlet.
  * <p/>
+ * Spring Boot auto-configurations that would add a second definition of something the XML configuration
+ * already owns (data source and SQL initialization, JPA and repositories, transactions, AOP proxying, cache,
+ * JMX, validation, message source, placeholder resolution, task executors, Jackson, Spring MVC, dispatcher,
+ * encoding filter, multipart and error handling) are excluded. The embedded web server auto-configuration is kept.
  *
  * @author Antoine Rey
  */
-public class PetclinicInitializer extends AbstractDispatcherServletInitializer {
+@SpringBootConfiguration
+@EnableAutoConfiguration(exclude = {
+    AopAutoConfiguration.class,
+    CacheAutoConfiguration.class,
+    DataSourceAutoConfiguration.class,
+    DataSourceTransactionManagerAutoConfiguration.class,
+    DispatcherServletAutoConfiguration.class,
+    ErrorMvcAutoConfiguration.class,
+    HibernateJpaAutoConfiguration.class,
+    HttpEncodingAutoConfiguration.class,
+    HttpMessageConvertersAutoConfiguration.class,
+    JacksonAutoConfiguration.class,
+    JdbcClientAutoConfiguration.class,
+    JdbcTemplateAutoConfiguration.class,
+    JmxAutoConfiguration.class,
+    JpaRepositoriesAutoConfiguration.class,
+    JtaAutoConfiguration.class,
+    MessageSourceAutoConfiguration.class,
+    MultipartAutoConfiguration.class,
+    PersistenceExceptionTranslationAutoConfiguration.class,
+    PropertyPlaceholderAutoConfiguration.class,
+    SpringDataWebAutoConfiguration.class,
+    SqlInitializationAutoConfiguration.class,
+    TaskExecutionAutoConfiguration.class,
+    TaskSchedulingAutoConfiguration.class,
+    TransactionAutoConfiguration.class,
+    TransactionManagerCustomizationAutoConfiguration.class,
+    ValidationAutoConfiguration.class,
+    WebMvcAutoConfiguration.class
+})
+@ImportResource({"classpath:spring/business-config.xml", "classpath:spring/tools-config.xml"})
+public class PetclinicInitializer extends SpringBootServletInitializer {
 
     /**
      * Spring profile used to choose the persistence layer implementation.
@@ -46,36 +122,72 @@ public class PetclinicInitializer extends AbstractDispatcherServletInitializer {
      * When using Spring Data JPA, use: spring-data-jpa
      * <p/>
      * <p>
-     * You also may use the -Dspring.profiles.active=jdbc VM options to change
-     * default jpa Spring profile.
+     * You also may use the -Dspring.profiles.active=jdbc VM options (or the --spring.profiles.active=jdbc
+     * argument of the executable WAR) to change default jpa Spring profile.
      */
     private static final String SPRING_PROFILE = "jpa";
 
-    @Override
-    protected WebApplicationContext createRootApplicationContext() {
-        XmlWebApplicationContext rootAppContext = new XmlWebApplicationContext();
-        rootAppContext.setConfigLocations("classpath:spring/business-config.xml", "classpath:spring/tools-config.xml");
-        rootAppContext.getEnvironment().setDefaultProfiles(SPRING_PROFILE);
-        return rootAppContext;
+    private static final String DISPATCHER_SERVLET_NAME = "dispatcher";
+
+    private static final String LOGBACK_LOGGER_CONTEXT = "ch.qos.logback.classic.LoggerContext";
+
+    public PetclinicInitializer() {
+        // Keep the container's own error handling in an external Servlet container, as before Spring Boot.
+        setRegisterErrorPageFilter(false);
+    }
+
+    public static void main(String[] args) {
+        configureApplication(new SpringApplicationBuilder()).run(args);
     }
 
     @Override
-    protected WebApplicationContext createServletApplicationContext() {
+    protected SpringApplicationBuilder configure(SpringApplicationBuilder builder) {
+        configureApplication(builder);
+        if (!LOGBACK_LOGGER_CONTEXT.equals(LoggerFactory.getILoggerFactory().getClass().getName())) {
+            // The container loads SLF4J parent-first and has already bound it to its own provider (the Jetty Maven
+            // plugin with parentLoaderPriority binds it to the Maven logger). Spring Boot's Logback initialization
+            // refuses to start in that case, so logging stays with the container's provider, as before Spring Boot.
+            SpringApplication application = builder.application();
+            List<ApplicationListener<?>> listeners = new ArrayList<>(application.getListeners());
+            listeners.removeIf(LoggingApplicationListener.class::isInstance);
+            application.setListeners(listeners);
+        }
+        return builder;
+    }
+
+    private static SpringApplicationBuilder configureApplication(SpringApplicationBuilder builder) {
+        return builder
+            .sources(PetclinicInitializer.class)
+            .properties(
+                "spring.profiles.default=" + SPRING_PROFILE,
+                // <mvc:default-servlet-handler/> forwards to the container's "default" servlet
+                "server.servlet.register-default-servlet=true");
+    }
+
+    @Bean
+    public ServletRegistrationBean<DispatcherServlet> dispatcherServletRegistration() {
         XmlWebApplicationContext webAppContext = new XmlWebApplicationContext();
         webAppContext.setConfigLocation("classpath:spring/mvc-core-config.xml");
-        return webAppContext;
+        ServletRegistrationBean<DispatcherServlet> registration =
+            new ServletRegistrationBean<>(new DispatcherServlet(webAppContext), "/");
+        registration.setName(DISPATCHER_SERVLET_NAME);
+        registration.setLoadOnStartup(1);
+        registration.setAsyncSupported(true);
+        return registration;
     }
 
-    @Override
-    protected String[] getServletMappings() {
-        return new String[]{"/"};
-    }
-
-    @Override
-    protected Filter[] getServletFilters() {
+    @Bean
+    public FilterRegistrationBean<CharacterEncodingFilter> characterEncodingFilterRegistration() {
         // Used to provide the ability to enter Chinese characters inside the Owner Form
         CharacterEncodingFilter characterEncodingFilter = new CharacterEncodingFilter("UTF-8", true);
-        return new Filter[]{characterEncodingFilter};
+        FilterRegistrationBean<CharacterEncodingFilter> registration =
+            new FilterRegistrationBean<>(characterEncodingFilter);
+        registration.setName("characterEncodingFilter");
+        registration.addServletNames(DISPATCHER_SERVLET_NAME);
+        registration.setDispatcherTypes(DispatcherType.REQUEST, DispatcherType.FORWARD, DispatcherType.INCLUDE,
+            DispatcherType.ASYNC);
+        registration.setAsyncSupported(true);
+        return registration;
     }
 
 }
